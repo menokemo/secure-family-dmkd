@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Secure Family",
+        "description": "ضيف مخزن الإعداد المركزي بتاع Secure Family. الأدمن بينشر الإعدادات من التطبيق، وباقي الأفراد بيسجّلوا دخول بس."
+      }
+    },
+    "abort": {
+      "already_configured": "Secure Family متضاف بالفعل."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "config": { "name": "إعداد العيلة" },
+      "version": { "name": "نسخة الإعداد" },
+      "last_update": { "name": "آخر نشر" }
+    },
+    "binary_sensor": {
+      "configured": { "name": "العيلة متظبّطة" }
+    }
+  },
+  "services": {
+    "set_config": {
+      "name": "تعيين إعداد العيلة",
+      "description": "نشر إعداد العيلة المركزي. للأدمن بس.",
+      "fields": {
+        "config": {
+          "name": "الإعداد",
+          "description": "كائن إعداد العيلة الكامل (JSON)."
+        }
+      }
+    },
+    "rollback": {
+      "name": "ترجيع الإعداد",
+      "description": "ترجيع إعداد سابق للعيلة. للأدمن بس.",
+      "fields": {
+        "version": {
+          "name": "النسخة",
+          "description": "رقم النسخة اللي ترجعلها. سيبها فاضية عشان ترجع لآخر نسخة سابقة."
+        }
+      }
+    },
+    "clear_config": {
+      "name": "مسح الإعداد",
+      "description": "مسح إعداد العيلة المركزي. للأدمن بس."
+    }
+  }
+}

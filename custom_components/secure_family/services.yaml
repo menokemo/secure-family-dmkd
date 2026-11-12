@@ -1,0 +1,35 @@
+set_config:
+  name: Set family configuration
+  description: >-
+    Publish the central family configuration. Administrators only. The app
+    normally calls this for you via the "Publish as family config" button.
+  fields:
+    config:
+      name: Configuration
+      description: The full family configuration object (JSON).
+      required: true
+      example: '{"cameras": ["camera.front_door"], "alarmEntityId": "alarm_control_panel.alarmo"}'
+      selector:
+        object:
+
+rollback:
+  name: Roll back configuration
+  description: >-
+    Restore a previous family configuration. With no version, restores the most
+    recent previous one. Administrators only.
+  fields:
+    version:
+      name: Version
+      description: The version number to restore. Omit to restore the latest previous version.
+      required: false
+      example: 3
+      selector:
+        number:
+          min: 1
+          mode: box
+
+clear_config:
+  name: Clear configuration
+  description: >-
+    Clear the central family configuration (publishes an empty config).
+    Administrators only.

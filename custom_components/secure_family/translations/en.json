@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Secure Family",
+        "description": "Add the Secure Family central configuration store. The family admin publishes settings from the app; everyone else just signs in."
+      }
+    },
+    "abort": {
+      "already_configured": "Secure Family is already set up."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "config": { "name": "Family configuration" },
+      "version": { "name": "Config version" },
+      "last_update": { "name": "Last published" }
+    },
+    "binary_sensor": {
+      "configured": { "name": "Family configured" }
+    }
+  },
+  "services": {
+    "set_config": {
+      "name": "Set family configuration",
+      "description": "Publish the central family configuration. Administrators only.",
+      "fields": {
+        "config": {
+          "name": "Configuration",
+          "description": "The full family configuration object (JSON)."
+        }
+      }
+    },
+    "rollback": {
+      "name": "Roll back configuration",
+      "description": "Restore a previous family configuration. Administrators only.",
+      "fields": {
+        "version": {
+          "name": "Version",
+          "description": "The version number to restore. Omit to restore the latest previous version."
+        }
+      }
+    },
+    "clear_config": {
+      "name": "Clear configuration",
+      "description": "Clear the central family configuration. Administrators only."
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Secure Family",
+        "description": "Voeg de centrale configuratieopslag van Secure Family toe. De beheerder publiceert de instellingen vanuit de app; de rest logt alleen in."
+      }
+    },
+    "abort": {
+      "already_configured": "Secure Family is al ingesteld."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "config": { "name": "Gezinsconfiguratie" },
+      "version": { "name": "Configuratieversie" },
+      "last_update": { "name": "Laatst gepubliceerd" }
+    },
+    "binary_sensor": {
+      "configured": { "name": "Gezin geconfigureerd" }
+    }
+  },
+  "services": {
+    "set_config": {
+      "name": "Gezinsconfiguratie instellen",
+      "description": "Publiceer de centrale gezinsconfiguratie. Alleen beheerders.",
+      "fields": {
+        "config": {
+          "name": "Configuratie",
+          "description": "Het volledige gezinsconfiguratieobject (JSON)."
+        }
+      }
+    },
+    "rollback": {
+      "name": "Configuratie terugdraaien",
+      "description": "Herstel een vorige gezinsconfiguratie. Alleen beheerders.",
+      "fields": {
+        "version": {
+          "name": "Versie",
+          "description": "Het versienummer om te herstellen. Laat leeg voor de meest recente vorige versie."
+        }
+      }
+    },
+    "clear_config": {
+      "name": "Configuratie wissen",
+      "description": "Wis de centrale gezinsconfiguratie. Alleen beheerders."
+    }
+  }
+}
