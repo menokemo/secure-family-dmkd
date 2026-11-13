@@ -40,7 +40,12 @@ SET_CONFIG_SCHEMA = vol.Schema({vol.Required("config"): dict})
 ROLLBACK_SCHEMA = vol.Schema({vol.Optional("version"): int})
 CLEAR_SCHEMA = vol.Schema({})
 CLEANUP_SCHEMA = vol.Schema(
-    {vol.Optional("max_age_days", default=DEFAULT_STALE_DAYS): vol.All(int, vol.Range(min=1))}
+    {
+        vol.Optional("max_age_days", default=DEFAULT_STALE_DAYS): vol.All(
+            int, vol.Range(min=1)
+        ),
+        vol.Optional("dry_run", default=False): bool,
+    }
 )
 REQUEST_LIVE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.string})
 
@@ -83,14 +88,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await store.async_clear(name)
         _notify()
 
-    async def handle_cleanup(call: ServiceCall) -> dict[str, int]:
-        """يمسح تسجيلات mobile_app القديمة بتاعة التطبيق (المكررة). أدمن بس."""
+    async def handle_cleanup(call: ServiceCall) -> dict:
+        """يتعامل مع أجهزة تطبيقنا (app_id=secure_family) بس — عمره ما يلمس
+        تطبيق HA الأصلي. dry_run=true بيعرض القايمة من غير مسح. أدمن بس."""
         await _user_name(call)
+        dry_run = call.data["dry_run"]
         cutoff = dt_util.utcnow() - timedelta(days=call.data["max_age_days"])
         ent_reg = er.async_get(hass)
+        items: list[dict] = []
         removed = 0
         for cfg in list(hass.config_entries.async_entries("mobile_app")):
             data = cfg.data or {}
+            # فلتر حصري على تطبيقنا — التطبيق الأصلي app_id مختلف فمابيتلمسش.
             if data.get("app_id") != APP_ID and data.get("app_name") != APP_NAME:
                 continue
             trackers = [
@@ -103,14 +112,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 state = hass.states.get(entity_id)
                 if state and (newest is None or state.last_updated > newest):
                     newest = state.last_updated
-            # بنمسح بس لو عنده تحديث قديم فعلاً — مابنلمسش جهاز لسه بيحدّث
-            # ولا جهاز لسه اتسجّل ومابعتش موقع (newest = None).
-            if newest is None or newest >= cutoff:
-                continue
-            await hass.config_entries.async_remove(cfg.entry_id)
-            removed += 1
+            # قديم = عنده تحديث لكنه أقدم من المهلة. (newest=None يعني لسه
+            # ماحدّثش، فبنعتبره نشط ومابنمسحوش احتياطًا.)
+            stale = newest is not None and newest < cutoff
+            items.append(
+                {
+                    "name": cfg.title,
+                    "device_name": data.get("device_name"),
+                    "entity_id": trackers[0] if trackers else None,
+                    "last_updated": newest.isoformat() if newest else None,
+                    "stale": stale,
+                }
+            )
+            if stale and not dry_run:
+                await hass.config_entries.async_remove(cfg.entry_id)
+                removed += 1
+        stale_count = sum(1 for i in items if i["stale"])
+        if dry_run:
+            return {"total": len(items), "stale": stale_count, "trackers": items}
         hass.bus.async_fire(f"{DOMAIN}_trackers_cleaned", {"removed": removed})
-        return {"removed": removed}
+        return {"removed": removed, "total": len(items), "trackers": items}
 
     async def handle_request_live(call: ServiceCall) -> None:
         """يطلق حدث طلب موقع لايف لفرد. متاح لأي فرد مصرّح له (مش أدمن بس)."""

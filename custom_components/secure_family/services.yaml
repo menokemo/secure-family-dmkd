@@ -53,6 +53,15 @@ cleanup_stale_trackers:
           min: 1
           max: 365
           mode: box
+    dry_run:
+      name: Preview only
+      description: >-
+        List the Secure Family registrations (and which ones are stale) without
+        deleting anything. Use this first to review before cleaning.
+      required: false
+      default: false
+      selector:
+        boolean:
 
 request_live_location:
   name: Request live location

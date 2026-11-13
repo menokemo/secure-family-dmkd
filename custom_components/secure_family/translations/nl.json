@@ -60,6 +60,10 @@
         "max_age_days": {
           "name": "Max. leeftijd (dagen)",
           "description": "Verwijder registraties die minstens zoveel dagen niet zijn bijgewerkt."
+        },
+        "dry_run": {
+          "name": "Alleen voorbeeld",
+          "description": "Toon de registraties zonder te verwijderen. Eerst controleren."
         }
       }
     },

@@ -52,7 +52,7 @@ Settings → Devices & Services → **Add Integration** → **Secure Family**.
 | `secure_family.set_config` | Publish the full family configuration (admins only). |
 | `secure_family.rollback` | Restore a previous version (admins only). |
 | `secure_family.clear_config` | Clear the configuration (admins only). |
-| `secure_family.cleanup_stale_trackers` | Remove old / duplicate Secure Family `mobile_app` device registrations that stopped updating (admins only). Field `max_age_days` (default 7); returns `{ removed }`. |
+| `secure_family.cleanup_stale_trackers` | Remove old / duplicate Secure Family `mobile_app` registrations that stopped updating (admins only). Only ever touches **our** app (`app_id: secure_family`) — never the official Home Assistant Companion app. Fields: `max_age_days` (default 7), `dry_run` (default false — set true to list without deleting). Returns the matched trackers and a count. |
 | `secure_family.request_live_location` | Ask a member's device (`entity_id`) to send its location fast for a short while — powers the live view. Available to any family member. |
 
 ## Logo

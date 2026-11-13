@@ -60,6 +60,10 @@
         "max_age_days": {
           "name": "Max age (days)",
           "description": "Remove registrations not updated in at least this many days."
+        },
+        "dry_run": {
+          "name": "Preview only",
+          "description": "List the registrations without deleting. Review first."
         }
       }
     },
