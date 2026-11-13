@@ -37,8 +37,11 @@ clear_config:
 cleanup_stale_trackers:
   name: Clean up stale trackers
   description: >-
-    Remove old / duplicate Secure Family mobile_app device registrations that
-    have not updated their location for a while. Administrators only.
+    Remove duplicate and stale Secure Family mobile_app device registrations and
+    purge their long-term statistics. Duplicates (same device name) keep the most
+    recently updated one; stale devices are those not updated for max_age_days.
+    Only touches our app (app_id secure_family). Runs automatically too;
+    administrators can also run it manually here.
   fields:
     max_age_days:
       name: Max age (days)

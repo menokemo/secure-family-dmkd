@@ -16,13 +16,17 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import (
     APP_ID,
     APP_NAME,
+    AUTO_CLEANUP_HOURS,
+    AUTO_STALE_DAYS,
     DEFAULT_STALE_DAYS,
     DOMAIN,
+    DUPLICATE_LAG_HOURS,
     EVENT_LIVE_REQUEST,
     EVENT_UPDATED,
     SERVICE_CLEANUP_TRACKERS,
@@ -48,6 +52,97 @@ CLEANUP_SCHEMA = vol.Schema(
     }
 )
 REQUEST_LIVE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.string})
+
+
+async def _clean_stale_trackers(
+    hass: HomeAssistant, max_age_days: int, dry_run: bool
+) -> dict:
+    """ينضّف تسجيلات mobile_app بتاعة تطبيقنا (app_id=secure_family) بس:
+    - المكررات: نفس اسم الجهاز → يسيب الأحدث ويشيل الباقي (بقايا إعادة التسجيل).
+    - الميتة: ماحدّثتش من أكتر من max_age_days.
+    وبيمسح إحصائيات وحالات الكيانات المحذوفة عشان مايفضلش تحذير
+    "Entity has no state". عمره ما يلمس تطبيق HA الأصلي (app_id مختلف).
+    """
+    cutoff = dt_util.utcnow() - timedelta(days=max_age_days)
+    ent_reg = er.async_get(hass)
+    records: list[dict] = []
+    for cfg in list(hass.config_entries.async_entries("mobile_app")):
+        data = cfg.data or {}
+        if data.get("app_id") != APP_ID and data.get("app_name") != APP_NAME:
+            continue
+        entities = er.async_entries_for_config_entry(ent_reg, cfg.entry_id)
+        trackers = [e.entity_id for e in entities if e.domain == "device_tracker"]
+        newest = None
+        for tid in trackers:
+            state = hass.states.get(tid)
+            if state and (newest is None or state.last_updated > newest):
+                newest = state.last_updated
+        records.append(
+            {
+                "cfg": cfg,
+                "name": data.get("device_name") or cfg.title,
+                "newest": newest,
+                "entity_ids": [e.entity_id for e in entities],
+                "tracker": trackers[0] if trackers else None,
+            }
+        )
+
+    remove_ids: set[int] = set()
+    # المكررات: جمّع بالاسم، سيب الأحدث تحديثًا. مابنشيلش المكرر إلا لو متأخّر
+    # عن الأحدث بأكتر من DUPLICATE_LAG_HOURS — عشان لو موبايلين حقيقيين بنفس
+    # الاسم (الاتنين بيحدّثوا) مانمسحش ولا واحد منهم.
+    by_name: dict[str, list[dict]] = {}
+    for rec in records:
+        by_name.setdefault(rec["name"], []).append(rec)
+    epoch = dt_util.utc_from_timestamp(0)
+    lag = timedelta(hours=DUPLICATE_LAG_HOURS)
+    for group in by_name.values():
+        if len(group) <= 1:
+            continue
+        keep = max(group, key=lambda r: r["newest"] or epoch)
+        if keep["newest"] is None:
+            continue
+        for rec in group:
+            if rec is keep:
+                continue
+            if rec["newest"] is None or (keep["newest"] - rec["newest"]) > lag:
+                remove_ids.add(id(rec))
+    # الميتة
+    for rec in records:
+        if rec["newest"] is not None and rec["newest"] < cutoff:
+            remove_ids.add(id(rec))
+
+    items: list[dict] = []
+    removed = 0
+    purge_ids: list[str] = []
+    for rec in records:
+        will_remove = id(rec) in remove_ids
+        items.append(
+            {
+                "name": rec["name"],
+                "entity_id": rec["tracker"],
+                "last_updated": rec["newest"].isoformat() if rec["newest"] else None,
+                "remove": will_remove,
+            }
+        )
+        if will_remove and not dry_run:
+            purge_ids.extend(rec["entity_ids"])
+            await hass.config_entries.async_remove(rec["cfg"].entry_id)
+            removed += 1
+
+    if purge_ids:
+        try:
+            await hass.services.async_call(
+                "recorder", "purge_entities", {"entity_id": purge_ids}, blocking=False
+            )
+        except Exception:  # noqa: BLE001 - recorder مش موجود أو بيرفض، نكمّل
+            pass
+
+    to_remove = sum(1 for i in items if i["remove"])
+    if dry_run:
+        return {"total": len(items), "to_remove": to_remove, "trackers": items}
+    hass.bus.async_fire(f"{DOMAIN}_trackers_cleaned", {"removed": removed})
+    return {"removed": removed, "total": len(items), "trackers": items}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -89,49 +184,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _notify()
 
     async def handle_cleanup(call: ServiceCall) -> dict:
-        """يتعامل مع أجهزة تطبيقنا (app_id=secure_family) بس — عمره ما يلمس
-        تطبيق HA الأصلي. dry_run=true بيعرض القايمة من غير مسح. أدمن بس."""
+        """ينضّف أجهزة تطبيقنا (app_id=secure_family) بس: المكررات + الميتة،
+        ويمسح إحصائياتها. dry_run=true بيعرض القايمة من غير مسح. أدمن بس."""
         await _user_name(call)
-        dry_run = call.data["dry_run"]
-        cutoff = dt_util.utcnow() - timedelta(days=call.data["max_age_days"])
-        ent_reg = er.async_get(hass)
-        items: list[dict] = []
-        removed = 0
-        for cfg in list(hass.config_entries.async_entries("mobile_app")):
-            data = cfg.data or {}
-            # فلتر حصري على تطبيقنا — التطبيق الأصلي app_id مختلف فمابيتلمسش.
-            if data.get("app_id") != APP_ID and data.get("app_name") != APP_NAME:
-                continue
-            trackers = [
-                e.entity_id
-                for e in er.async_entries_for_config_entry(ent_reg, cfg.entry_id)
-                if e.domain == "device_tracker"
-            ]
-            newest = None
-            for entity_id in trackers:
-                state = hass.states.get(entity_id)
-                if state and (newest is None or state.last_updated > newest):
-                    newest = state.last_updated
-            # قديم = عنده تحديث لكنه أقدم من المهلة. (newest=None يعني لسه
-            # ماحدّثش، فبنعتبره نشط ومابنمسحوش احتياطًا.)
-            stale = newest is not None and newest < cutoff
-            items.append(
-                {
-                    "name": cfg.title,
-                    "device_name": data.get("device_name"),
-                    "entity_id": trackers[0] if trackers else None,
-                    "last_updated": newest.isoformat() if newest else None,
-                    "stale": stale,
-                }
-            )
-            if stale and not dry_run:
-                await hass.config_entries.async_remove(cfg.entry_id)
-                removed += 1
-        stale_count = sum(1 for i in items if i["stale"])
-        if dry_run:
-            return {"total": len(items), "stale": stale_count, "trackers": items}
-        hass.bus.async_fire(f"{DOMAIN}_trackers_cleaned", {"removed": removed})
-        return {"removed": removed, "total": len(items), "trackers": items}
+        return await _clean_stale_trackers(
+            hass, call.data["max_age_days"], call.data["dry_run"]
+        )
 
     async def handle_request_live(call: ServiceCall) -> None:
         """يطلق حدث طلب موقع لايف لفرد. متاح لأي فرد مصرّح له (مش أدمن بس)."""
@@ -158,6 +216,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN, SERVICE_REQUEST_LIVE, handle_request_live, schema=REQUEST_LIVE_SCHEMA
         )
 
+    # تنظيف تلقائي دوري: بيشيل المكررات والأجهزة الميتة بتاعة تطبيقنا ويمسح
+    # إحصائياتها — عشان بقايا إعادة التسجيل/إعادة التثبيت ماتتراكمش ولا تطلّع
+    # تحذيرات "Entity has no state". بيتسجّل مرة واحدة لكل HA.
+    if not hass.data[DOMAIN].get("_auto_cleanup"):
+        hass.data[DOMAIN]["_auto_cleanup"] = True
+
+        async def _auto_cleanup(_now) -> None:
+            try:
+                await _clean_stale_trackers(hass, AUTO_STALE_DAYS, False)
+            except Exception:  # noqa: BLE001 - التنظيف الدوري مايوقعش التكامل
+                pass
+
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass, _auto_cleanup, timedelta(hours=AUTO_CLEANUP_HOURS)
+            )
+        )
+        # تنظيفة أولى بعد دقيقتين من الإقلاع (بقايا الجلسة السابقة).
+        entry.async_on_unload(async_call_later(hass, 120, _auto_cleanup))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -167,7 +245,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-        if not hass.data[DOMAIN]:
+        if not [k for k in hass.data[DOMAIN] if k != "_auto_cleanup"]:
+            hass.data[DOMAIN].pop("_auto_cleanup", None)
             for service in (
                 SERVICE_SET_CONFIG,
                 SERVICE_ROLLBACK,

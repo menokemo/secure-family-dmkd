@@ -23,6 +23,12 @@ APP_ID = "secure_family"
 APP_NAME = "Secure Family"
 # أقل عدد أيام بدون تحديث عشان نعتبر جهاز mobile_app قديم.
 DEFAULT_STALE_DAYS = 7
+# التنظيف التلقائي: كل كام ساعة، وبعد كام يوم بدون تحديث نعتبره ميت.
+AUTO_CLEANUP_HOURS = 6
+AUTO_STALE_DAYS = 7
+# فرق الوقت اللي بعده نعتبر جهازًا مكررًا (نفس الاسم) بقايا ميتة: لازم يكون
+# متأخرًا عن الأحدث بأكتر من كده عشان مانمسحش موبايلًا حيًا باسم متشابه.
+DUPLICATE_LAG_HOURS = 2
 
 # حدث بيتطلق مع كل تغيير — التطبيقات تقدر تسمعه للتحديث الفوري.
 EVENT_UPDATED = "secure_family_config_updated"
