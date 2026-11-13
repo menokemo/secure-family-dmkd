@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 import voluptuous as vol
@@ -52,6 +53,21 @@ CLEANUP_SCHEMA = vol.Schema(
     }
 )
 REQUEST_LIVE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.string})
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _is_our_tracker(hass: HomeAssistant, entity_id: str) -> bool:
+    """بيتأكد إن الـ entity_id ده device_tracker تابع لتطبيقنا (secure_family)."""
+    ent_reg = er.async_get(hass)
+    ent = ent_reg.async_get(entity_id)
+    if ent is None or ent.config_entry_id is None:
+        return False
+    cfg = hass.config_entries.async_get_entry(ent.config_entry_id)
+    if cfg is None or cfg.domain != "mobile_app":
+        return False
+    data = cfg.data or {}
+    return data.get("app_id") == APP_ID or data.get("app_name") == APP_NAME
 
 
 async def _clean_stale_trackers(
@@ -141,6 +157,12 @@ async def _clean_stale_trackers(
     to_remove = sum(1 for i in items if i["remove"])
     if dry_run:
         return {"total": len(items), "to_remove": to_remove, "trackers": items}
+    if removed:
+        _LOGGER.info(
+            "Secure Family: cleaned %d stale/duplicate tracker(s): %s",
+            removed,
+            ", ".join(i["name"] for i in items if i["remove"]),
+        )
     hass.bus.async_fire(f"{DOMAIN}_trackers_cleaned", {"removed": removed})
     return {"removed": removed, "total": len(items), "trackers": items}
 
@@ -192,8 +214,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     async def handle_request_live(call: ServiceCall) -> None:
-        """يطلق حدث طلب موقع لايف لفرد. متاح لأي فرد مصرّح له (مش أدمن بس)."""
-        hass.bus.async_fire(EVENT_LIVE_REQUEST, {"entity_id": call.data["entity_id"]})
+        """يطلق حدث طلب موقع لايف لفرد. متاح لأي فرد مصرّح له (مش أدمن بس).
+        بنتأكد إن الـ entity_id تابع لتطبيقنا عشان مايتبعتش لأي كيان عشوائي."""
+        entity_id = call.data["entity_id"]
+        if not _is_our_tracker(hass, entity_id):
+            _LOGGER.warning(
+                "request_live_location ignored: %s is not a Secure Family tracker",
+                entity_id,
+            )
+            return
+        hass.bus.async_fire(EVENT_LIVE_REQUEST, {"entity_id": entity_id})
+        _LOGGER.debug("Secure Family: live location requested for %s", entity_id)
 
     if not hass.services.has_service(DOMAIN, SERVICE_SET_CONFIG):
         hass.services.async_register(

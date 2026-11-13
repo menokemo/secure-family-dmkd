@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import json
+import logging
+from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -13,6 +15,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+
+_LOGGER = logging.getLogger(__name__)
+
+# سينسور الأجهزة هو الوحيد اللي بيعمل poll؛ 60 ثانية كافية ووفّر overhead.
+SCAN_INTERVAL = timedelta(seconds=60)
+
+# فوق الحد ده في الـ attribute بيحذّر HA ويقص؛ ننبّه قبل ما يحصل.
+_CONFIG_ATTR_WARN_BYTES = 14000
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -57,8 +67,23 @@ class SecureFamilyConfigSensor(SecureFamilyEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         data = self._store.data
+        config = data.get("config", {})
+        # حارس حجم: HA بيقص الـ attributes الكبيرة، فالتطبيق ممكن يستقبل إعداد
+        # ناقص من غير ما حد يلاحظ. ننبّه في اللوج قبل ما يحصل.
+        size = 0
+        try:
+            size = len(json.dumps(config))
+        except (TypeError, ValueError):
+            pass
+        if size > _CONFIG_ATTR_WARN_BYTES:
+            _LOGGER.warning(
+                "Secure Family config is %d bytes — approaching Home Assistant's "
+                "state-attribute limit (~16KB). Consider trimming the family config.",
+                size,
+            )
         return {
-            "config": data.get("config", {}),
+            "config": config,
+            "config_size": size,
             "updated_at": data.get("updated_at"),
             "updated_by": data.get("updated_by"),
             "has_history": bool(data.get("history")),
