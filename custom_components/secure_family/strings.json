@@ -12,12 +12,20 @@
   },
   "entity": {
     "sensor": {
-      "config": { "name": "Family configuration" },
-      "version": { "name": "Config version" },
-      "last_update": { "name": "Last published" }
+      "config": {
+        "name": "Family configuration"
+      },
+      "version": {
+        "name": "Config version"
+      },
+      "last_update": {
+        "name": "Last published"
+      }
     },
     "binary_sensor": {
-      "configured": { "name": "Family configured" }
+      "configured": {
+        "name": "Family configured"
+      }
     }
   },
   "services": {
@@ -44,6 +52,26 @@
     "clear_config": {
       "name": "Clear configuration",
       "description": "Clear the central family configuration. Administrators only."
+    },
+    "cleanup_stale_trackers": {
+      "name": "Clean up stale trackers",
+      "description": "Remove old or duplicate Secure Family device registrations that stopped updating. Administrators only.",
+      "fields": {
+        "max_age_days": {
+          "name": "Max age (days)",
+          "description": "Remove registrations not updated in at least this many days."
+        }
+      }
+    },
+    "request_live_location": {
+      "name": "Request live location",
+      "description": "Ask a family member's device to send its location at a fast rate briefly. Available to any family member.",
+      "fields": {
+        "entity_id": {
+          "name": "Person tracker",
+          "description": "The device_tracker of the family member."
+        }
+      }
     }
   }
 }

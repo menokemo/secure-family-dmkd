@@ -13,9 +13,21 @@ MAX_HISTORY = 10
 SERVICE_SET_CONFIG = "set_config"
 SERVICE_ROLLBACK = "rollback"
 SERVICE_CLEAR = "clear_config"
+# تنظيف أجهزة mobile_app القديمة/المكررة (أدمن).
+SERVICE_CLEANUP_TRACKERS = "cleanup_stale_trackers"
+# طلب موقع لايف لفرد (متاح لأي فرد، مش أدمن بس).
+SERVICE_REQUEST_LIVE = "request_live_location"
+
+# app_id اللي تطبيقنا بيسجّل بيه في تكامل mobile_app.
+APP_ID = "secure_family"
+APP_NAME = "Secure Family"
+# أقل عدد أيام بدون تحديث عشان نعتبر جهاز mobile_app قديم.
+DEFAULT_STALE_DAYS = 7
 
 # حدث بيتطلق مع كل تغيير — التطبيقات تقدر تسمعه للتحديث الفوري.
 EVENT_UPDATED = "secure_family_config_updated"
+# حدث طلب الموقع اللايف — جهاز الفرد المستهدف بيسمعه ويدخل الوضع السريع.
+EVENT_LIVE_REQUEST = "familyha_live_request"
 
 # إشارة داخلية لتحديث الكيانات.
 SIGNAL_UPDATE = f"{DOMAIN}_update"

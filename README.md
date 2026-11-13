@@ -1,3 +1,5 @@
+<img src="brands/custom_integrations/secure_family/logo.png" alt="Secure Family" width="110" />
+
 # Secure Family — Home Assistant integration
 
 Central configuration store for the **Secure Family** app. The one technical
@@ -50,6 +52,18 @@ Settings → Devices & Services → **Add Integration** → **Secure Family**.
 | `secure_family.set_config` | Publish the full family configuration (admins only). |
 | `secure_family.rollback` | Restore a previous version (admins only). |
 | `secure_family.clear_config` | Clear the configuration (admins only). |
+| `secure_family.cleanup_stale_trackers` | Remove old / duplicate Secure Family `mobile_app` device registrations that stopped updating (admins only). Field `max_age_days` (default 7); returns `{ removed }`. |
+| `secure_family.request_live_location` | Ask a member's device (`entity_id`) to send its location fast for a short while — powers the live view. Available to any family member. |
+
+## Logo
+
+The integration's logo for the Home Assistant UI lives in
+`brands/custom_integrations/secure_family/`. To make Home Assistant show it on
+the Devices & Services page, submit those files to the
+[home-assistant/brands](https://github.com/home-assistant/brands) repository
+under `custom_integrations/secure_family/` (`icon.png` 256×256, `icon@2x.png`
+512×512, and the matching `logo.png` / `logo@2x.png`). See
+`brands/README.md`.
 
 Writes are restricted to Home Assistant administrators and validated before they
 are stored. No secrets (tokens or passwords) are ever kept in the central config.

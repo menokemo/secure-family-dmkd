@@ -12,12 +12,20 @@
   },
   "entity": {
     "sensor": {
-      "config": { "name": "Gezinsconfiguratie" },
-      "version": { "name": "Configuratieversie" },
-      "last_update": { "name": "Laatst gepubliceerd" }
+      "config": {
+        "name": "Gezinsconfiguratie"
+      },
+      "version": {
+        "name": "Configuratieversie"
+      },
+      "last_update": {
+        "name": "Laatst gepubliceerd"
+      }
     },
     "binary_sensor": {
-      "configured": { "name": "Gezin geconfigureerd" }
+      "configured": {
+        "name": "Gezin geconfigureerd"
+      }
     }
   },
   "services": {
@@ -44,6 +52,26 @@
     "clear_config": {
       "name": "Configuratie wissen",
       "description": "Wis de centrale gezinsconfiguratie. Alleen beheerders."
+    },
+    "cleanup_stale_trackers": {
+      "name": "Oude trackers opruimen",
+      "description": "Verwijder oude of dubbele Secure Family-apparaatregistraties die niet meer bijwerken. Alleen beheerders.",
+      "fields": {
+        "max_age_days": {
+          "name": "Max. leeftijd (dagen)",
+          "description": "Verwijder registraties die minstens zoveel dagen niet zijn bijgewerkt."
+        }
+      }
+    },
+    "request_live_location": {
+      "name": "Live locatie opvragen",
+      "description": "Vraag het apparaat van een gezinslid om kort snel zijn locatie te sturen. Voor elk gezinslid.",
+      "fields": {
+        "entity_id": {
+          "name": "Persoon-tracker",
+          "description": "De device_tracker van het gezinslid."
+        }
+      }
     }
   }
 }

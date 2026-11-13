@@ -33,3 +33,38 @@ clear_config:
   description: >-
     Clear the central family configuration (publishes an empty config).
     Administrators only.
+
+cleanup_stale_trackers:
+  name: Clean up stale trackers
+  description: >-
+    Remove old / duplicate Secure Family mobile_app device registrations that
+    have not updated their location for a while. Administrators only.
+  fields:
+    max_age_days:
+      name: Max age (days)
+      description: >-
+        Remove registrations whose location has not updated in at least this
+        many days. Devices updating recently are kept.
+      required: false
+      default: 7
+      example: 7
+      selector:
+        number:
+          min: 1
+          max: 365
+          mode: box
+
+request_live_location:
+  name: Request live location
+  description: >-
+    Ask a family member's device to send its location at a fast rate for a
+    short while (used by the live-view feature). Available to any family member.
+  fields:
+    entity_id:
+      name: Person tracker
+      description: The device_tracker entity_id of the family member to request live location for.
+      required: true
+      example: device_tracker.secure_family_mena
+      selector:
+        entity:
+          domain: device_tracker

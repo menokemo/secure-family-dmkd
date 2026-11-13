@@ -12,12 +12,20 @@
   },
   "entity": {
     "sensor": {
-      "config": { "name": "إعداد العيلة" },
-      "version": { "name": "نسخة الإعداد" },
-      "last_update": { "name": "آخر نشر" }
+      "config": {
+        "name": "إعداد العيلة"
+      },
+      "version": {
+        "name": "نسخة الإعداد"
+      },
+      "last_update": {
+        "name": "آخر نشر"
+      }
     },
     "binary_sensor": {
-      "configured": { "name": "العيلة متظبّطة" }
+      "configured": {
+        "name": "العيلة متظبّطة"
+      }
     }
   },
   "services": {
@@ -44,6 +52,26 @@
     "clear_config": {
       "name": "مسح الإعداد",
       "description": "مسح إعداد العيلة المركزي. للأدمن بس."
+    },
+    "cleanup_stale_trackers": {
+      "name": "تنظيف الأجهزة القديمة",
+      "description": "يمسح تسجيلات أجهزة Secure Family القديمة أو المكررة اللي وقفت تتحدّث. للأدمن بس.",
+      "fields": {
+        "max_age_days": {
+          "name": "أقصى عمر (أيام)",
+          "description": "يمسح التسجيلات اللي ماتحدّثتش من كذا يوم على الأقل."
+        }
+      }
+    },
+    "request_live_location": {
+      "name": "طلب الموقع اللايف",
+      "description": "يطلب من جهاز فرد يبعت موقعه بسرعة لفترة قصيرة. متاح لأي فرد.",
+      "fields": {
+        "entity_id": {
+          "name": "جهاز الفرد",
+          "description": "الـ device_tracker بتاع الفرد."
+        }
+      }
     }
   }
 }

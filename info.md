@@ -1,3 +1,5 @@
+<img src="brands/custom_integrations/secure_family/logo.png" alt="Secure Family" width="96" />
+
 # Secure Family
 
 Central configuration store for the **Secure Family** app. The technical family
