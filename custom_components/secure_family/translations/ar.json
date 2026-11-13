@@ -20,6 +20,9 @@
       },
       "last_update": {
         "name": "آخر نشر"
+      },
+      "devices": {
+        "name": "أجهزة تطبيقنا"
       }
     },
     "binary_sensor": {

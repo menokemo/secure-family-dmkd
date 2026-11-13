@@ -20,6 +20,9 @@
       },
       "last_update": {
         "name": "Laatst gepubliceerd"
+      },
+      "devices": {
+        "name": "Onze app-apparaten"
       }
     },
     "binary_sensor": {

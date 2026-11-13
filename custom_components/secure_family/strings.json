@@ -20,6 +20,9 @@
       },
       "last_update": {
         "name": "Last published"
+      },
+      "devices": {
+        "name": "Our app devices"
       }
     },
     "binary_sensor": {

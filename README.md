@@ -55,6 +55,15 @@ Settings → Devices & Services → **Add Integration** → **Secure Family**.
 | `secure_family.cleanup_stale_trackers` | Remove old / duplicate Secure Family `mobile_app` registrations that stopped updating (admins only). Only ever touches **our** app (`app_id: secure_family`) — never the official Home Assistant Companion app. Fields: `max_age_days` (default 7), `dry_run` (default false — set true to list without deleting). Returns the matched trackers and a count. |
 | `secure_family.request_live_location` | Ask a member's device (`entity_id`) to send its location fast for a short while — powers the live view. Available to any family member. |
 
+## Entities
+
+`sensor.secure_family_devices` lists the phones running **our** app (filtered by
+`app_id: secure_family`, so the official Home Assistant Companion app is never
+included). Its state is the device count; the `devices` attribute holds each
+phone's name, battery, location state, last update, and all of its sensors. The
+app registers every phone with a configurable friendly name you set in
+**Settings → App info → Device name**.
+
 ## Logo
 
 The integration's logo for the Home Assistant UI lives in
