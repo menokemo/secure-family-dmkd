@@ -54,6 +54,27 @@ Settings → Devices & Services → **Add Integration** → **Secure Family**.
 | `secure_family.clear_config` | Clear the configuration (admins only). |
 | `secure_family.cleanup_stale_trackers` | Remove **duplicate** (same device name — keeps the newest) and **stale** Secure Family `mobile_app` registrations, and purge their long-term statistics (so no "entity has no state" warnings pile up). Only ever touches **our** app (`app_id: secure_family`) — never the official Home Assistant Companion app. Fields: `max_age_days` (default 7), `dry_run` (default false). **Also runs automatically** every few hours and ~2 min after start, so re-registration/reinstall leftovers clean themselves. |
 | `secure_family.request_live_location` | Ask a member's device (`entity_id`) to send its location fast for a short while — powers the live view. Available to any family member. |
+| `secure_family.request_registration` | The app calls this after registering with `mobile_app` to claim the **single active-device** slot for the signed-in user. Fields: `device_id` (stable per-phone id), `webhook_id`, `name`. Returns `approved` for the first or the same phone, or `pending` when the account is already active on another phone. Identity comes from the caller's token, so a user can only claim their own slot. |
+| `secure_family.approve_registration` | Approve a pending device takeover. Admins pass `request_id` (from their app); the new phone passes the admin-provided `code`. The old phone is removed and signed out instantly. |
+| `secure_family.deny_registration` | Reject a pending request and remove its stray registration (admins only). Field: `request_id`. |
+| `secure_family.list_pending_registrations` | List pending device requests **with their codes** — admins only. This is how an admin's app fetches the code securely (codes are never broadcast in an event). |
+
+## Device registration & approval
+
+Each signed-in user may have **one active phone** at a time. When the app
+registers, `request_registration` either approves it directly (the first phone,
+or the same phone re-registering — which is what prevents duplicate
+`mobile_app` registrations) or, when the account is already active elsewhere,
+marks it **pending** and alerts admins:
+
+- a `familyha_device_approval` event (no code) for admins' apps, plus an HA
+  persistent notification;
+- the 6-digit code is **secret** — stored server-side, single-use, expires in
+  10 minutes, and only an admin can read it via `list_pending_registrations`.
+
+An admin approves from their app, or relays the code to the new phone. On
+approval the old phone's registration is removed and a `familyha_force_logout`
+event signs it out immediately; the new phone hears `familyha_device_approved`.
 
 ## Entities
 
