@@ -30,13 +30,19 @@ from .const import (
     DUPLICATE_LAG_HOURS,
     EVENT_LIVE_REQUEST,
     EVENT_UPDATED,
+    SERVICE_APPROVE_REGISTRATION,
     SERVICE_CLEANUP_TRACKERS,
     SERVICE_CLEAR,
+    SERVICE_DENY_REGISTRATION,
+    SERVICE_LIST_PENDING,
     SERVICE_REQUEST_LIVE,
+    SERVICE_REQUEST_REGISTRATION,
     SERVICE_ROLLBACK,
     SERVICE_SET_CONFIG,
     SIGNAL_UPDATE,
 )
+from .device_store import DeviceStore
+from .devices import DeviceManager
 from .store import ConfigStore
 
 PLATFORMS = ["sensor", "binary_sensor"]
@@ -53,6 +59,18 @@ CLEANUP_SCHEMA = vol.Schema(
     }
 )
 REQUEST_LIVE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.string})
+REQUEST_REG_SCHEMA = vol.Schema(
+    {
+        vol.Required("device_id"): cv.string,
+        vol.Required("webhook_id"): cv.string,
+        vol.Required("name"): cv.string,
+    }
+)
+APPROVE_REG_SCHEMA = vol.Schema(
+    {vol.Optional("request_id"): cv.string, vol.Optional("code"): cv.string}
+)
+DENY_REG_SCHEMA = vol.Schema({vol.Required("request_id"): cv.string})
+LIST_PENDING_SCHEMA = vol.Schema({})
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -173,6 +191,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await store.async_load()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = store
 
+    # مدير أجهزة التطبيق (جهاز نشط واحد لكل مستخدم + موافقة أدمن) — singleton.
+    if "_devices" not in hass.data[DOMAIN]:
+        device_store = DeviceStore(hass)
+        await device_store.async_load()
+        hass.data[DOMAIN]["_devices"] = DeviceManager(hass, device_store)
+
     async def _user_name(call: ServiceCall) -> str | None:
         """يتأكد إن المنفّذ أدمن ويرجّع اسمه. بيرفض غير الأدمن."""
         user_id = call.context.user_id
@@ -226,6 +250,56 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.bus.async_fire(EVENT_LIVE_REQUEST, {"entity_id": entity_id})
         _LOGGER.debug("Secure Family: live location requested for %s", entity_id)
 
+    async def _is_admin_call(call: ServiceCall) -> bool:
+        """بيرجّع True لو المنفّذ أدمن (أو نداء داخلي موثوق). بيرفع لو غير أدمن."""
+        user_id = call.context.user_id
+        if user_id is None:
+            return True  # نداء داخلي من السيرفر (أتمتة/سكربت).
+        user = await hass.auth.async_get_user(user_id)
+        if user is None or not user.is_admin:
+            raise HomeAssistantError("Only administrators can do this.")
+        return True
+
+    async def handle_request_registration(call: ServiceCall) -> dict:
+        """التطبيق يطلب تسجيل جهازه. أي مستخدم مسجّل دخول (مش أدمن بس) —
+        بياخد هويته من سياق النداء فمايقدرش يسجّل باسم حد تاني."""
+        user_id = call.context.user_id
+        if user_id is None:
+            raise HomeAssistantError("Must be called by a signed-in user.")
+        user = await hass.auth.async_get_user(user_id)
+        devices: DeviceManager = hass.data[DOMAIN]["_devices"]
+        return await devices.request(
+            user_id,
+            user.name if user else "User",
+            call.data["device_id"],
+            call.data["webhook_id"],
+            call.data["name"],
+        )
+
+    async def handle_approve_registration(call: ServiceCall) -> dict:
+        """موافقة: إما request_id من أدمن، أو code من الجهاز الجديد (الكود إثبات
+        موافقة الأدمن)."""
+        user_id = call.context.user_id
+        is_admin = True
+        if user_id is not None:
+            user = await hass.auth.async_get_user(user_id)
+            is_admin = bool(user and user.is_admin)
+        devices: DeviceManager = hass.data[DOMAIN]["_devices"]
+        return await devices.approve(
+            call.data.get("request_id"), call.data.get("code"), is_admin
+        )
+
+    async def handle_deny_registration(call: ServiceCall) -> dict:
+        await _is_admin_call(call)
+        devices: DeviceManager = hass.data[DOMAIN]["_devices"]
+        return await devices.deny(call.data["request_id"])
+
+    async def handle_list_pending(call: ServiceCall) -> dict:
+        """قائمة الطلبات المعلّقة بالأكواد — للأدمن بس (الكود سرّي)."""
+        await _is_admin_call(call)
+        devices: DeviceManager = hass.data[DOMAIN]["_devices"]
+        return {"pending": devices.list_pending()}
+
     if not hass.services.has_service(DOMAIN, SERVICE_SET_CONFIG):
         hass.services.async_register(
             DOMAIN, SERVICE_SET_CONFIG, handle_set, schema=SET_CONFIG_SCHEMA
@@ -245,6 +319,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         hass.services.async_register(
             DOMAIN, SERVICE_REQUEST_LIVE, handle_request_live, schema=REQUEST_LIVE_SCHEMA
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REQUEST_REGISTRATION,
+            handle_request_registration,
+            schema=REQUEST_REG_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_APPROVE_REGISTRATION,
+            handle_approve_registration,
+            schema=APPROVE_REG_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_DENY_REGISTRATION,
+            handle_deny_registration,
+            schema=DENY_REG_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_LIST_PENDING,
+            handle_list_pending,
+            schema=LIST_PENDING_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
         )
 
     # تنظيف تلقائي دوري: بيشيل المكررات والأجهزة الميتة بتاعة تطبيقنا ويمسح
@@ -276,14 +378,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-        if not [k for k in hass.data[DOMAIN] if k != "_auto_cleanup"]:
+        if not [
+            k for k in hass.data[DOMAIN] if k not in ("_auto_cleanup", "_devices")
+        ]:
             hass.data[DOMAIN].pop("_auto_cleanup", None)
+            hass.data[DOMAIN].pop("_devices", None)
             for service in (
                 SERVICE_SET_CONFIG,
                 SERVICE_ROLLBACK,
                 SERVICE_CLEAR,
                 SERVICE_CLEANUP_TRACKERS,
                 SERVICE_REQUEST_LIVE,
+                SERVICE_REQUEST_REGISTRATION,
+                SERVICE_APPROVE_REGISTRATION,
+                SERVICE_DENY_REGISTRATION,
+                SERVICE_LIST_PENDING,
             ):
                 hass.services.async_remove(DOMAIN, service)
     return unloaded

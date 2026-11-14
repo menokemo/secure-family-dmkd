@@ -37,3 +37,28 @@ EVENT_LIVE_REQUEST = "familyha_live_request"
 
 # إشارة داخلية لتحديث الكيانات.
 SIGNAL_UPDATE = f"{DOMAIN}_update"
+
+# ===== إدارة أجهزة التطبيق: جهاز نشط واحد لكل مستخدم + موافقة الأدمن =====
+# تخزين الأجهزة النشطة والطلبات المعلّقة (منفصل عن مخزن الإعداد).
+DEVICE_STORAGE_KEY = "secure_family_devices"
+DEVICE_STORAGE_VERSION = 1
+
+# خدمات (منطقها في devices.py عشان نفضل ملفات صغيرة منظمة).
+SERVICE_REQUEST_REGISTRATION = "request_registration"
+SERVICE_APPROVE_REGISTRATION = "approve_registration"
+SERVICE_DENY_REGISTRATION = "deny_registration"
+SERVICE_LIST_PENDING = "list_pending_registrations"
+
+# صلاحية كود الموافقة (دقائق) وأقصى عدد محاولات قبل القفل.
+APPROVAL_CODE_TTL_MIN = 10
+APPROVAL_MAX_ATTEMPTS = 5
+
+# حدث تنبيه الأدمن بطلب موافقة — بدون كود (الكود سرّي، بييجي عبر خدمة أدمن بس).
+EVENT_APPROVAL_REQUEST = "familyha_device_approval"
+# حدث خروج فوري: الجهاز القديم بيسمعه ويسجّل خروجه عند الاستبدال.
+EVENT_FORCE_LOGOUT = "familyha_force_logout"
+# حدث تمت الموافقة: الجهاز الجديد بيسمعه (بمطابقة device_id بتاعه) فيعرف إنه
+# اتفعّل — سواء الأدمن وافق من تطبيقه أو بالكود.
+EVENT_DEVICE_APPROVED = "familyha_device_approved"
+# معرّف الإشعار الثابت لطلب الموافقة (عشان نقدر نلغيه بعد الرد).
+NOTIFY_PREFIX = "secure_family_approval_"

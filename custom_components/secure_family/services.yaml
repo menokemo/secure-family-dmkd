@@ -80,3 +80,67 @@ request_live_location:
       selector:
         entity:
           domain: device_tracker
+
+request_registration:
+  name: Request device registration
+  description: >-
+    The app calls this after registering with mobile_app to claim the single
+    active-device slot for the signed-in user. Returns "approved" for the first
+    or the same physical device, or "pending" (admin approval required) when the
+    account is already active on another device.
+  fields:
+    device_id:
+      name: Physical device id
+      description: Stable per-phone id (ANDROID_ID).
+      required: true
+      example: a1b2c3d4e5f6
+      selector:
+        text:
+    webhook_id:
+      name: Webhook id
+      description: The mobile_app webhook id this device just registered with.
+      required: true
+      selector:
+        text:
+    name:
+      name: Device name
+      description: Friendly device name shown to the admin.
+      required: true
+      selector:
+        text:
+
+approve_registration:
+  name: Approve device registration
+  description: >-
+    Approve a pending device takeover. Admins pass request_id from their app;
+    the new device passes the admin-provided code. The old device is signed out.
+  fields:
+    request_id:
+      name: Request id
+      description: The pending request id (admin approval from the app).
+      required: false
+      selector:
+        text:
+    code:
+      name: Approval code
+      description: The 6-digit code the admin provided (entered on the new device).
+      required: false
+      selector:
+        text:
+
+deny_registration:
+  name: Deny device registration
+  description: Reject a pending device request and remove its stray registration. Administrators only.
+  fields:
+    request_id:
+      name: Request id
+      description: The pending request id to deny.
+      required: true
+      selector:
+        text:
+
+list_pending_registrations:
+  name: List pending device requests
+  description: >-
+    Return pending device-approval requests with their codes. Administrators
+    only — this is how an admin's app gets the code securely.
