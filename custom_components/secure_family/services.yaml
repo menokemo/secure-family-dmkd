@@ -81,6 +81,27 @@ request_live_location:
         entity:
           domain: device_tracker
 
+check_device:
+  name: Check device registration
+  description: >-
+    Called by the app before registering. If the same phone already has a valid
+    active registration, returns action "reuse" with its webhook_id (so no new
+    mobile_app device is created — prevents duplicates/noise). Otherwise returns
+    action "register". Also sets the device name to the user's name (or the
+    custom name). Fields: device_id (stable per-phone id), name (optional custom).
+  fields:
+    device_id:
+      name: Physical device id
+      required: true
+      selector:
+        text:
+    name:
+      name: Custom device name
+      description: Optional. Empty = use the signed-in user's name.
+      required: false
+      selector:
+        text:
+
 request_registration:
   name: Request device registration
   description: >-

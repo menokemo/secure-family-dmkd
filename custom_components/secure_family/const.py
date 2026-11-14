@@ -44,6 +44,7 @@ DEVICE_STORAGE_KEY = "secure_family_devices"
 DEVICE_STORAGE_VERSION = 1
 
 # خدمات (منطقها في devices.py عشان نفضل ملفات صغيرة منظمة).
+SERVICE_CHECK_DEVICE = "check_device"
 SERVICE_REQUEST_REGISTRATION = "request_registration"
 SERVICE_APPROVE_REGISTRATION = "approve_registration"
 SERVICE_DENY_REGISTRATION = "deny_registration"

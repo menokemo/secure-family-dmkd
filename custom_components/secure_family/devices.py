@@ -16,6 +16,7 @@ from datetime import timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -53,6 +54,40 @@ class DeviceManager:
     def _new_code() -> str:
         """كود 6 أرقام قوي عشوائيًا (crypto)."""
         return f"{secrets.randbelow(1_000_000):06d}"
+
+    def _rename_device(self, webhook_id: str | None, name: str) -> None:
+        """يسمّي جهاز mobile_app (بالـ webhook) باسم المستخدم/المخصّص — بيحط
+        name_by_user زي ما HA بيعمل عند إعادة التسمية اليدوية (موثوق)."""
+        if not webhook_id or not name:
+            return
+        entry = self._find_entry_by_webhook(webhook_id)
+        if entry is None:
+            return
+        dev_reg = dr.async_get(self._hass)
+        for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+            if device.name_by_user != name:
+                dev_reg.async_update_device(device.id, name_by_user=name)
+
+    async def check(
+        self, user_id: str, user_name: str, device_id: str, name: str
+    ) -> dict:
+        """قبل أي تسجيل: لو نفس الموبايل عنده تسجيل شغّال (الجهاز لسه موجود في
+        HA) → بنعيد استخدام نفس الـ webhook (صفر جهاز جديد، صفر تشويش) ونسمّيه.
+        غير كده → register (التطبيق يكمّل التسجيل العادي)."""
+        self._prune_expired()
+        active = self._store.active.get(user_id)
+        effective = (name or "").strip() or user_name
+        if (
+            active is not None
+            and active.get("device_id") == device_id
+            and self._find_entry_by_webhook(active.get("webhook_id")) is not None
+        ):
+            self._rename_device(active.get("webhook_id"), effective)
+            if active.get("name") != effective:
+                active["name"] = effective
+                await self._store.async_save()
+            return {"action": "reuse", "webhook_id": active["webhook_id"]}
+        return {"action": "register"}
 
     def _prune_expired(self) -> bool:
         """يشيل الطلبات المنتهية ويلغي إشعاراتها. بيرجّع True لو اتغيّر حاجة."""
@@ -123,12 +158,22 @@ class DeviceManager:
 
         if active is None or active.get("device_id") == device_id:
             # أول جهاز أو نفس الجهاز بيعيد التسجيل — موافقة مباشرة، صفر تكرار.
+            effective = (name or "").strip() or user_name
+            # لو نفس الموبايل سجّل بـ webhook جديد — امسح جهازه القديم في HA
+            # عشان مايتراكمش تكرار (ده بيحصل لو الـ webhook القديم اتفقد).
+            old_webhook = active.get("webhook_id") if active else None
+            if old_webhook and old_webhook != webhook_id:
+                old_entry = self._find_entry_by_webhook(old_webhook)
+                if old_entry is not None:
+                    await self._hass.config_entries.async_remove(old_entry.entry_id)
             self._store.active[user_id] = {
                 "device_id": device_id,
                 "webhook_id": webhook_id,
-                "name": name,
+                "name": effective,
                 "registered_at": now,
             }
+            # نسمّي الجهاز باسم المستخدم (أو الاسم المخصّص) تلقائيًا من أول مرة.
+            self._rename_device(webhook_id, effective)
             # أي طلبات معلّقة لنفس المستخدم بقت ملهاش لازمة.
             for rid in [
                 r for r, p in self._store.pending.items() if p["user_id"] == user_id

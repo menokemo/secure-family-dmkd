@@ -31,6 +31,7 @@ from .const import (
     EVENT_LIVE_REQUEST,
     EVENT_UPDATED,
     SERVICE_APPROVE_REGISTRATION,
+    SERVICE_CHECK_DEVICE,
     SERVICE_CLEANUP_TRACKERS,
     SERVICE_CLEAR,
     SERVICE_DENY_REGISTRATION,
@@ -59,6 +60,9 @@ CLEANUP_SCHEMA = vol.Schema(
     }
 )
 REQUEST_LIVE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.string})
+CHECK_DEVICE_SCHEMA = vol.Schema(
+    {vol.Required("device_id"): cv.string, vol.Optional("name", default=""): cv.string}
+)
 REQUEST_REG_SCHEMA = vol.Schema(
     {
         vol.Required("device_id"): cv.string,
@@ -260,6 +264,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise HomeAssistantError("Only administrators can do this.")
         return True
 
+    async def handle_check_device(call: ServiceCall) -> dict:
+        """قبل التسجيل: التطبيق يسأل لو نفس الموبايل عنده تسجيل شغّال نعيد
+        استخدامه (من غير جهاز جديد). الهوية من التوكن."""
+        user_id = call.context.user_id
+        if user_id is None:
+            raise HomeAssistantError("Must be called by a signed-in user.")
+        user = await hass.auth.async_get_user(user_id)
+        devices: DeviceManager = hass.data[DOMAIN]["_devices"]
+        return await devices.check(
+            user_id, user.name if user else "User", call.data["device_id"], call.data.get("name", "")
+        )
+
     async def handle_request_registration(call: ServiceCall) -> dict:
         """التطبيق يطلب تسجيل جهازه. أي مستخدم مسجّل دخول (مش أدمن بس) —
         بياخد هويته من سياق النداء فمايقدرش يسجّل باسم حد تاني."""
@@ -319,6 +335,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         hass.services.async_register(
             DOMAIN, SERVICE_REQUEST_LIVE, handle_request_live, schema=REQUEST_LIVE_SCHEMA
+        )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CHECK_DEVICE,
+            handle_check_device,
+            schema=CHECK_DEVICE_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
         )
         hass.services.async_register(
             DOMAIN,
@@ -389,6 +412,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_CLEAR,
                 SERVICE_CLEANUP_TRACKERS,
                 SERVICE_REQUEST_LIVE,
+                SERVICE_CHECK_DEVICE,
                 SERVICE_REQUEST_REGISTRATION,
                 SERVICE_APPROVE_REGISTRATION,
                 SERVICE_DENY_REGISTRATION,
