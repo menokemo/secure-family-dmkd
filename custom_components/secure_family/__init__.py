@@ -47,7 +47,7 @@ from .devices import DeviceManager
 from .panel import async_remove_panel, async_setup_panel
 from .store import ConfigStore
 
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = ["sensor", "binary_sensor", "calendar"]
 
 SET_CONFIG_SCHEMA = vol.Schema({vol.Required("config"): dict})
 ROLLBACK_SCHEMA = vol.Schema({vol.Optional("version"): int})
@@ -409,12 +409,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not [
             k
             for k in hass.data[DOMAIN]
-            if k not in ("_auto_cleanup", "_devices", "_panel_registered")
+            if k not in ("_auto_cleanup", "_devices", "_panel_registered", "_calendars_entry")
         ]:
             # آخر config entry اتشال — نشيل الصفحة وننضّف.
             async_remove_panel(hass)
             hass.data[DOMAIN].pop("_auto_cleanup", None)
             hass.data[DOMAIN].pop("_devices", None)
+            hass.data[DOMAIN].pop("_calendars_entry", None)
             for service in (
                 SERVICE_SET_CONFIG,
                 SERVICE_ROLLBACK,
