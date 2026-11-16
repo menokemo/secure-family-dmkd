@@ -19,6 +19,33 @@ Assistant server. No cloud, no internet required.
   already uses, applies the settings on login, and caches them for offline use.
   Changes the admin publishes are pushed to everyone instantly.
 
+## Admin page (sidebar)
+
+Installing adds a **Secure Family** page to the sidebar (admins only). It follows
+your Home Assistant **interface language** (English / Dutch / Arabic, RTL
+included) and has three parts:
+
+- **Setup check** — what the app needs (home zone, alarm, cameras, people, mobile
+  app, hazard sources), with buttons to add anything missing.
+- **Optional add-ons** — recommended hazard integrations, split into *global*
+  (GDACS, USGS) for everyone and *country-specific* ones (P2000 for the
+  Netherlands, NWS for the US, GeoNet for New Zealand, DWD for Germany, NSW for
+  Australia).
+- **Family settings** — the same admin settings the app publishes, grouped into
+  collapsible sections like the app's admin (Alarm, Cameras, Doorbell, Map &
+  location, Dashboard, Calendar & to-do, Background). Alarm sensors are filtered
+  to door/window/motion types (with a *show all* toggle) and the live
+  `geo_location` hazard sources are shown separately. Members never see these.
+
+## Family calendars
+
+The integration creates three **local, family-owned calendars** automatically,
+with stable entity ids so the app's Family tab always finds them: birthdays,
+events, and appointments (see the Entities table). They support recurring events
+and are created **once** — a fixed unique id means Home Assistant restores the
+same calendars after every restart instead of duplicating them, and events are
+stored in `.storage`, so nothing is lost or recreated.
+
 ## Installation
 
 ### Via HACS (custom repository)
@@ -44,6 +71,9 @@ Settings → Devices & Services → **Add Integration** → **Secure Family**.
 | `sensor.secure_family_version` | Current configuration version (diagnostic). |
 | `sensor.secure_family_last_published` | When the config was last published (diagnostic). |
 | `binary_sensor.secure_family_configured` | On once a configuration has been published. |
+| `calendar.secure_family_birthdays` | Family birthdays calendar (local, supports yearly recurrence). |
+| `calendar.secure_family_events` | Family events / occasions calendar (local). |
+| `calendar.secure_family_appointments` | Family appointments calendar (local). |
 
 ## Services
 
