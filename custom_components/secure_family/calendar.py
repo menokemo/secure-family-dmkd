@@ -46,6 +46,9 @@ CALENDARS = (
     ("birthdays", "Secure Family Birthdays"),
     ("events", "Secure Family Events"),
     ("appointments", "Secure Family Appointments"),
+    # تقويم خطة الأكل — التطبيق بيخزّن فيه الوجبات (فطار/غدا/عشا) كأحداث، عشان
+    # نعيد استخدام بنية التقويم بدل مخزن منفصل. بيتفلتر من عرض الأعمدة في التطبيق.
+    ("meals", "Secure Family Meals"),
 )
 
 
