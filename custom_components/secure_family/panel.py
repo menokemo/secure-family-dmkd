@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 
@@ -20,8 +21,22 @@ from .store import ConfigStore
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _version() -> str:
+    """رقم إصدار المكوّن من manifest — نستعمله لكسر كاش المتصفح."""
+    try:
+        path = os.path.join(os.path.dirname(__file__), "manifest.json")
+        with open(path, encoding="utf-8") as fh:
+            return str(json.load(fh).get("version", "0"))
+    except Exception:  # noqa: BLE001 — لو فشل القراية نرجّع 0 (مش مشكلة حرجة)
+        return "0"
+
+
 PANEL_URL_PATH = "secure-family"  # مسار الصفحة في الشريط الجانبي
-PANEL_JS_URL = "/secure_family_static/secure-family-panel.js"
+PANEL_JS_PATH = "/secure_family_static/secure-family-panel.js"  # المسار الثابت للملف
+# الرابط اللي بيتحمّل منه الـweb component — بزيادة ?v=الإصدار عشان المتصفح يجيب
+# النسخة الجديدة بعد كل تحديث بدل الكاش القديم (مشكلة كاش لوحات HA المعروفة).
+PANEL_JS_URL = f"{PANEL_JS_PATH}?v={_version()}"
 PANEL_TITLE = "Secure Family"
 PANEL_ICON = "mdi:shield-home"
 WS_TYPE = "secure_family/requirements"
@@ -97,11 +112,11 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
         from homeassistant.components.http import StaticPathConfig
 
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(PANEL_JS_URL, js_path, False)]
+            [StaticPathConfig(PANEL_JS_PATH, js_path, False)]
         )
     except (ImportError, AttributeError):
         try:
-            hass.http.register_static_path(PANEL_JS_URL, js_path, False)
+            hass.http.register_static_path(PANEL_JS_PATH, js_path, False)
         except Exception:  # noqa: BLE001
             pass
     except Exception:  # noqa: BLE001 — المسار متسجّل قبل كده
