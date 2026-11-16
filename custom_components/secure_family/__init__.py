@@ -44,6 +44,7 @@ from .const import (
 )
 from .device_store import DeviceStore
 from .devices import DeviceManager
+from .panel import async_remove_panel, async_setup_panel
 from .store import ConfigStore
 
 PLATFORMS = ["sensor", "binary_sensor"]
@@ -393,6 +394,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(async_call_later(hass, 120, _auto_cleanup))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # صفحة الإعداد في الشريط الجانبي (فحص المتطلبات). مرة واحدة لكل HA.
+    await async_setup_panel(hass)
+
     return True
 
 
@@ -402,8 +407,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not [
-            k for k in hass.data[DOMAIN] if k not in ("_auto_cleanup", "_devices")
+            k
+            for k in hass.data[DOMAIN]
+            if k not in ("_auto_cleanup", "_devices", "_panel_registered")
         ]:
+            # آخر config entry اتشال — نشيل الصفحة وننضّف.
+            async_remove_panel(hass)
             hass.data[DOMAIN].pop("_auto_cleanup", None)
             hass.data[DOMAIN].pop("_devices", None)
             for service in (
