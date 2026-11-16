@@ -25,8 +25,9 @@ from homeassistant.components.calendar import (
     CalendarEvent,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_added_domain
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -82,12 +83,27 @@ def _is_all_day(x) -> bool:
     return isinstance(x, date) and not isinstance(x, datetime)
 
 
+def _person_key(person_entity_id: str) -> str:
+    """مفتاح تقويم فرد ثابت من object_id بتاع كيان person (person.mena → person_mena)."""
+    return f"person_{person_entity_id.split('.', 1)[1]}"
+
+
+def _person_name(hass: HomeAssistant, person_entity_id: str) -> str:
+    st = hass.states.get(person_entity_id)
+    name = st.attributes.get("friendly_name") if st else None
+    return str(name or person_entity_id.split(".", 1)[1])
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """يعمل التقاويم الثلاثة — لأول config entry بس (مفيش تكرار)."""
+    """يعمل تقاويم العيلة الثابتة (أعياد ميلاد/مناسبات/مواعيد) + **تقويم لكل فرد**
+    (person) تلقائيًا — لأول config entry بس (مفيش تكرار). التقاويم الشخصية
+    بتتعمل للموجودين دلوقتي، وأي فرد يتضاف بعدين بياخد تقويمه تلقائيًا من غير
+    إعادة تحميل. المفاتيح ثابتة (unique_id) فمفيش تكرار عبر إعادة التشغيل.
+    """
     owner = hass.data.setdefault(DOMAIN, {}).get(_FLAG)
     if owner is not None and owner != entry.entry_id:
         return  # تقويم اتعمل من entry تاني — مانعملوش تاني
@@ -95,9 +111,37 @@ async def async_setup_entry(
 
     store = _CalStore(hass)
     await store.load()
-    async_add_entities(
-        SecureFamilyCalendar(store, key, name) for key, name in CALENDARS
-    )
+
+    created: set[str] = set()
+
+    @callback
+    def _add(specs: list[tuple[str, str, str | None]]) -> None:
+        """يضيف تقاويم جديدة بس (مش متكررة). spec = (key, name, person_entity_id?)."""
+        fresh = [s for s in specs if s[0] not in created]
+        for key, _name, _pid in fresh:
+            created.add(key)
+        if fresh:
+            async_add_entities(
+                SecureFamilyCalendar(store, key, name, pid) for key, name, pid in fresh
+            )
+
+    # الثابتة + تقويم لكل فرد موجود حاليًا.
+    specs: list[tuple[str, str, str | None]] = [(k, n, None) for k, n in CALENDARS]
+    for pid in hass.states.async_entity_ids("person"):
+        specs.append((_person_key(pid), f"{_person_name(hass, pid)} (Secure Family)", pid))
+    _add(specs)
+
+    # أي فرد (person) يتضاف بعد كده → تقويمه يتعمل تلقائيًا (بيغطي كمان لو كيانات
+    # person اتحمّلت بعد المكوّن، فمفيش مشكلة ترتيب تحميل).
+    @callback
+    def _person_added(event) -> None:
+        eid = event.data.get("entity_id")
+        new_state = event.data.get("new_state")
+        if not eid or new_state is None:
+            return
+        _add([(_person_key(eid), f"{new_state.attributes.get('friendly_name') or eid.split('.', 1)[1]} (Secure Family)", eid)])
+
+    entry.async_on_unload(async_track_state_added_domain(hass, ["person"], _person_added))
 
 
 class SecureFamilyCalendar(CalendarEntity):
@@ -111,11 +155,15 @@ class SecureFamilyCalendar(CalendarEntity):
         | CalendarEntityFeature.UPDATE_EVENT
     )
 
-    def __init__(self, store: _CalStore, key: str, name: str) -> None:
+    def __init__(self, store: _CalStore, key: str, name: str, person_entity_id: str | None = None) -> None:
         self._store = store
         self._key = key
         self._attr_name = name
         self._attr_unique_id = f"{DOMAIN}_{key}"
+        # لتقويم فرد: بنعرض كيان الـperson كـattribute عشان التطبيق يربط كل تقويم
+        # بصاحبه (عمود لكل فرد) من غير ما يعتمد على اسم/entity_id متغيّر.
+        if person_entity_id:
+            self._attr_extra_state_attributes = {"person_entity_id": person_entity_id}
 
     # ===== قراية =====
     @property

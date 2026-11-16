@@ -29,12 +29,15 @@ has three parts:
 
 ## Family calendars
 
-The integration creates three local, family-owned calendars automatically, with
-stable entity ids so the app's Family tab always finds them:
+The integration creates local, family-owned calendars automatically, with stable
+entity ids so the app's Family tab always finds them:
 
-- `calendar.secure_family_birthdays`
-- `calendar.secure_family_events`
-- `calendar.secure_family_appointments`
+- Three shared calendars: `calendar.secure_family_birthdays`,
+  `calendar.secure_family_events`, `calendar.secure_family_appointments`.
+- **One calendar per `person`** — for the app's multi-member calendar view (a
+  column per family member). Each carries a `person_entity_id` attribute so the
+  app can match each calendar to its owner regardless of naming. People added
+  later get their calendar automatically (no reload needed).
 
 They are fully local, support recurring events (yearly birthdays, etc.), and are
 created **once** — a fixed unique id means Home Assistant restores the same
