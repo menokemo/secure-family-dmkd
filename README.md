@@ -39,12 +39,38 @@ included) and has three parts:
 
 ## Family calendars
 
-The integration creates three **local, family-owned calendars** automatically,
-with stable entity ids so the app's Family tab always finds them: birthdays,
-events, and appointments (see the Entities table). They support recurring events
-and are created **once** — a fixed unique id means Home Assistant restores the
-same calendars after every restart instead of duplicating them, and events are
-stored in `.storage`, so nothing is lost or recreated.
+The integration creates a small set of **local, family-owned, shared calendars**
+automatically, with stable entity ids so the app's Family tab always finds them.
+Everyone in the family writes to them and everyone sees them; the app shows who
+created each event. They are created **once** — a fixed unique id means Home
+Assistant restores the same calendars after every restart instead of duplicating
+them, and events are stored in `.storage`, so nothing is lost or recreated.
+
+| Calendar | Behaviour |
+| --- | --- |
+| **Annual** (`secure_family_annual`) | Birthdays, anniversaries, yearly occasions. Every event added here is **all-day and repeats yearly** automatically. **Birthdays are generated automatically** from each member's date set in **Family profiles** (panel). |
+| **Planner** (`secure_family_planner`) | One-off, timed appointments and events. Past events are **removed automatically** (swept every few hours). |
+| **Holidays** (`secure_family_holidays`) | Your country's official public holidays — generated from the `holidays` library using Home Assistant's configured country. **Read-only.** |
+| **Meals** (`secure_family_meals`) | Backs the app's weekly meal plan. |
+
+Each calendar carries a `secure_family_kind` attribute (`annual` / `planner` /
+`holidays` / `meals`) so the app styles and behaves correctly without relying on
+names.
+
+On upgrade from an older version, the previous `birthdays` / `events` /
+`appointments` calendars are **migrated** into the new ones (birthdays & events →
+Annual, appointments → Planner), and the old **per-person** calendars the
+integration used to create are **removed** automatically.
+
+### Family profiles
+
+The panel has a **Family profiles** section (under Calendar & to-do) where an
+admin sets, per family member (`person`): a **birthday**, an optional **role**
+(Dad / Mom / Son…), and an optional **colour**. Birthdays entered here are turned
+into yearly all-day events in the Annual calendar automatically (stable ids, so
+they're never duplicated and update when a date changes), tagged with the member
+so the app shows their photo next to the event. Profiles are stored in the family
+config and published with it.
 
 ## Installation
 
@@ -71,9 +97,10 @@ Settings → Devices & Services → **Add Integration** → **Secure Family**.
 | `sensor.secure_family_version` | Current configuration version (diagnostic). |
 | `sensor.secure_family_last_published` | When the config was last published (diagnostic). |
 | `binary_sensor.secure_family_configured` | On once a configuration has been published. |
-| `calendar.secure_family_birthdays` | Family birthdays calendar (local, supports yearly recurrence). |
-| `calendar.secure_family_events` | Family events / occasions calendar (local). |
-| `calendar.secure_family_appointments` | Family appointments calendar (local). |
+| `calendar.secure_family_annual` | Annual events — birthdays/anniversaries/occasions (all-day, auto yearly). |
+| `calendar.secure_family_planner` | Planner — one-off timed events; past ones auto-removed. |
+| `calendar.secure_family_holidays` | Official public holidays for your country (read-only). |
+| `calendar.secure_family_meals` | Backs the app's weekly meal plan. |
 
 ## Services
 

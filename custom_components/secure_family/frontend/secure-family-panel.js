@@ -35,6 +35,7 @@ const FIELDS = [
   { key: "hazardRadiusKm", group: "location", type: "number", label: { en: "Hazard radius (km)", nl: "Gevarenradius (km)", ar: "نطاق المخاطر (كم)" } },
   { key: "disasterRadiusKm", group: "location", type: "number", label: { en: "Disaster radius (km)", nl: "Rampstraal (km)", ar: "نطاق الكوارث (كم)" } },
   { key: "selectedDashboardPath", group: "dashboard", type: "text", label: { en: "Dashboard path", nl: "Dashboardpad", ar: "مسار اللوحة" } },
+  { key: "profiles", group: "family", type: "profiles", label: { en: "Family profiles", nl: "Gezinsprofielen", ar: "بروفايلات العيلة" } },
   { key: "selectedCalendarIds", group: "family", type: "entities", domains: ["calendar"], label: { en: "Calendars", nl: "Agenda's", ar: "التقاويم" } },
   { key: "selectedTodoIds", group: "family", type: "entities", domains: ["todo"], label: { en: "To-do lists", nl: "Takenlijsten", ar: "قوائم المهام" } },
   { key: "backgroundMonitoringEnabled", group: "background", type: "toggle", label: { en: "Background monitoring", nl: "Achtergrondbewaking", ar: "المراقبة في الخلفية" } },
@@ -57,6 +58,9 @@ const T = {
     settings: "Family settings", settingsSub: "The admin settings published to the family. Members don't see these.",
     save: "Save & publish", saved: "Published to the family", saveErr: "Could not save",
     none: "— none —", ready: "Ready", missing: "Missing", add: "Add", installed: "Installed",
+    birthday: "Birthday", role: "Role", rolePlaceholder: "Dad, Mom, Son…", color: "Color",
+    profilesNoPersons: "No people found. Add person entities in Home Assistant first.",
+    profilesHint: "Birthdays here are added to the Annual calendar automatically and repeat every year.",
     scopeGlobal: "Global", scopeCountry: "Your country", loading: "Loading…",
     showAll: "Show all sensors", alarmSensorsHint: "Only used if Alarmo doesn't manage its own sensors. Showing door / window / motion type sensors.",
     geoTitle: "Hazard sources (geo_location)", geoHint: "These feed road, weather and disaster alerts on the map.", geoNone: "No geo_location source yet — add one from the setup check above.",
@@ -86,6 +90,9 @@ const T = {
     settings: "Gezinsinstellingen", settingsSub: "De beheerdersinstellingen die naar het gezin worden gepubliceerd. Leden zien deze niet.",
     save: "Opslaan & publiceren", saved: "Gepubliceerd naar het gezin", saveErr: "Opslaan mislukt",
     none: "— geen —", ready: "Gereed", missing: "Ontbreekt", add: "Toevoegen", installed: "Geïnstalleerd",
+    birthday: "Verjaardag", role: "Rol", rolePlaceholder: "Vader, Moeder, Zoon…", color: "Kleur",
+    profilesNoPersons: "Geen personen gevonden. Voeg eerst person-entiteiten toe in Home Assistant.",
+    profilesHint: "Verjaardagen hier komen automatisch in de Jaarlijkse agenda en herhalen elk jaar.",
     scopeGlobal: "Wereldwijd", scopeCountry: "Jouw land", loading: "Laden…",
     showAll: "Alle sensoren tonen", alarmSensorsHint: "Alleen gebruikt als Alarmo zijn eigen sensoren niet beheert. Toont deur- / raam- / bewegingssensoren.",
     geoTitle: "Gevarenbronnen (geo_location)", geoHint: "Deze voeden verkeers-, weer- en rampmeldingen op de kaart.", geoNone: "Nog geen geo_location-bron — voeg er een toe via de controle hierboven.",
@@ -115,6 +122,9 @@ const T = {
     settings: "إعدادات العيلة", settingsSub: "إعدادات الأدمن اللي بتتنشر للعيلة. الأفراد مابيشوفوهاش.",
     save: "حفظ ونشر", saved: "اتنشر للعيلة", saveErr: "ماقدرش يحفظ",
     none: "— مفيش —", ready: "جاهز", missing: "ناقص", add: "أضف", installed: "متركّب",
+    birthday: "تاريخ الميلاد", role: "الصفة", rolePlaceholder: "أب، أم، ابن…", color: "اللون",
+    profilesNoPersons: "مفيش أفراد. ضيف كيانات person في Home Assistant الأول.",
+    profilesHint: "أعياد الميلاد هنا بتتضاف تلقائيًا لتقويم المناسبات السنوية وبتتكرر كل سنة.",
     scopeGlobal: "عالمي", scopeCountry: "دولتك", loading: "جار التحميل…",
     showAll: "عرض كل الحسّاسات", alarmSensorsHint: "بيُستعمل بس لو Alarmo مش بيدير حسّاساته بنفسه. بيعرض حسّاسات الأبواب / الشبابيك / الحركة.",
     geoTitle: "مصادر المخاطر (geo_location)", geoHint: "دي اللي بتغذّي بلاغات الطرق والطقس والكوارث على الخريطة.", geoNone: "مفيش مصدر geo_location لسه — أضف واحد من فحص الإعداد فوق.",
@@ -307,6 +317,31 @@ class SecureFamilyPanel extends HTMLElement {
         .map((m) => `<label class="chk"><input type="checkbox" value="${m}" ${obj[m] !== false ? "checked" : ""}/> ${m}</label>`)
         .join("")}</div>`;
     }
+    if (f.type === "profiles") {
+      // بروفايل لكل فرد (person): تاريخ ميلاد + صفة + لون اختياري. المكوّن
+      // بيولّد من تاريخ الميلاد حدث سنوي تلقائيًا في تقويم المناسبات.
+      const pv = v && typeof v === "object" ? v : {};
+      const persons = this._entities(["person"]);
+      if (!persons.length) return `<div class="fhint">${t.profilesNoPersons}</div>`;
+      const rows = persons
+        .map((p) => {
+          const pr = pv[p.id] || {};
+          return `<div class="profile" data-pid="${p.id}" style="border:1px solid var(--divider-color,#e0e0e0);border-radius:10px;padding:10px;margin-bottom:8px;">
+            <div style="font-weight:600;margin-bottom:8px;">${esc(p.name)}</div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;opacity:.8;">${t.birthday}
+                <input type="date" data-pf="birthday" value="${pr.birthday ? esc(pr.birthday) : ""}"/></label>
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;opacity:.8;">${t.role}
+                <input type="text" data-pf="role" value="${pr.role ? esc(pr.role) : ""}" placeholder="${t.rolePlaceholder}"/></label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.8;">
+                <input type="checkbox" data-pf="colorOn" ${pr.color ? "checked" : ""}/> ${t.color}
+                <input type="color" data-pf="color" value="${pr.color ? esc(pr.color) : "#378ADD"}"/></label>
+            </div>
+          </div>`;
+        })
+        .join("");
+      return `<div data-key="profiles" data-type="profiles" style="width:100%;">${rows}<div class="fhint">${t.profilesHint}</div></div>`;
+    }
     return "";
   }
 
@@ -326,6 +361,21 @@ class SecureFamilyPanel extends HTMLElement {
       } else if (type === "modes") {
         const obj = {};
         el.querySelectorAll("input").forEach((i) => { obj[i.value] = i.checked; });
+        this._setEdited(key, obj);
+      } else if (type === "profiles") {
+        const obj = {};
+        el.querySelectorAll(".profile").forEach((row) => {
+          const pid = row.getAttribute("data-pid");
+          const entry = {};
+          const b = row.querySelector('[data-pf="birthday"]');
+          if (b && b.value) entry.birthday = b.value;
+          const r = row.querySelector('[data-pf="role"]');
+          if (r && r.value.trim()) entry.role = r.value.trim();
+          const con = row.querySelector('[data-pf="colorOn"]');
+          const col = row.querySelector('[data-pf="color"]');
+          if (con && con.checked && col && col.value) entry.color = col.value;
+          if (Object.keys(entry).length) obj[pid] = entry;
+        });
         this._setEdited(key, obj);
       }
     });

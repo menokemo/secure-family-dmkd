@@ -1,14 +1,18 @@
-"""منصّة تقويم Secure Family — ٣ تقاويم مملوكة للمكوّن.
+"""منصّة تقويم Secure Family — تقاويم عائلية مشتركة مملوكة للمكوّن.
 
-المكوّن بيعمل تقاويمه بنفسه عشان التطبيق (تبويب العائلة) يلاقيها جاهزة بـ
-entity_id مضمونة:
-  · calendar.secure_family_birthdays   — أعياد الميلاد (تكرار سنوي عادةً)
-  · calendar.secure_family_events      — المناسبات
-  · calendar.secure_family_appointments — المواعيد
+الكل في العيلة بيكتب فيها وبتظهر للكل، وجمب كل حدث بيبان مين أنشأه (التطبيق
+بيخزّن المنشئ في الوصف). التقاويم:
+  · calendar.secure_family_annual    — مناسبات سنوية (ميلاد/جواز/مناسبات) — كل حدث
+      بيتكرر سنويًا تلقائيًا (All-day).
+  · calendar.secure_family_planner   — المفكرة: مواعيد وأحداث عابرة بوقت محدّد،
+      بتتمسح تلقائيًا أول ما تعدّي.
+  · calendar.secure_family_holidays  — الأعياد الرسمية لبلدك (عرض فقط، بتتولّد من
+      مكتبة holidays حسب دولة HA).
+  · calendar.secure_family_meals     — خطة الأكل (التطبيق بيخزّن فيها الوجبات).
 
-**مفيش تكرار**: كل تقويم له unique_id ثابت، فـHA بيرجّعه نفسه بعد أي إعادة
-تشغيل بدل ما يعمل نسخة جديدة، والأحداث متخزّنة في .storage فبتفضل موجودة.
-والمنصّة بتتسطّب لأول config entry بس (علامة في hass.data).
+**مفيش تكرار**: كل تقويم له unique_id ثابت، والأحداث متخزّنة في .storage.
+**ميجريشن**: التقاويم القديمة (birthdays/events/appointments) وتقاويم الأفراد
+(person_*) بتتنقل/بتتشال تلقائيًا مرة واحدة (idempotent).
 
 التكرار (recurrence) بيتحسب في calendar_recurrence.py (موديول نقي متختبر).
 """
@@ -26,34 +30,43 @@ from homeassistant.components.calendar import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_added_domain
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .calendar_recurrence import expand, to_datetime
-from .const import DOMAIN
+from .const import DOMAIN, SIGNAL_UPDATE
 
 _LOGGER = logging.getLogger(__name__)
 
 CAL_STORAGE_VERSION = 1
 CAL_STORAGE_KEY = f"{DOMAIN}_calendars"
 _FLAG = "_calendars_entry"  # entry_id اللي عمل التقاويم (عشان مرة واحدة بس)
+_YEARLY = "FREQ=YEARLY"
+_PLANNER_SWEEP = timedelta(hours=6)  # كل كام نظّف المفكرة من اللي عدّى
+_BDAY_UID = "sfbday_"  # بادئة أحداث الميلاد المتولّدة تلقائيًا (عشان نعيد توليدها نظيف)
 
-# التقاويم الثابتة: (key داخلي ثابت، اسم العرض الافتراضي). الاسم محايد بالإنجليزي؛
-# التطبيق بيعرض ترجمته. key ثابت → unique_id ثابت → مفيش تكرار.
+# التقاويم: (key داخلي ثابت، اسم العرض الافتراضي، نوع السلوك). الاسم محايد
+# بالإنجليزي؛ التطبيق بيعرض ترجمته. key ثابت → unique_id ثابت → مفيش تكرار.
 CALENDARS = (
-    ("birthdays", "Secure Family Birthdays"),
-    ("events", "Secure Family Events"),
-    ("appointments", "Secure Family Appointments"),
-    # تقويم خطة الأكل — التطبيق بيخزّن فيه الوجبات (فطار/غدا/عشا) كأحداث، عشان
-    # نعيد استخدام بنية التقويم بدل مخزن منفصل. بيتفلتر من عرض الأعمدة في التطبيق.
-    ("meals", "Secure Family Meals"),
+    ("annual", "Secure Family Annual", "annual"),
+    ("planner", "Secure Family Planner", "planner"),
+    ("holidays", "Secure Family Holidays", "holidays"),
+    ("meals", "Secure Family Meals", "meals"),
 )
+
+# ميجريشن: تقويم قديم → (الجديد، يتحوّل سنوي؟)
+_MIGRATE = {
+    "birthdays": ("annual", True),
+    "events": ("annual", True),
+    "appointments": ("planner", False),
+}
 
 
 class _CalStore:
-    """مخزن مشترك للتقاويم الثلاثة (ملف .storage واحد)."""
+    """مخزن مشترك للتقاويم (ملف .storage واحد)."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._store: Store[dict] = Store(hass, CAL_STORAGE_VERSION, CAL_STORAGE_KEY)
@@ -86,15 +99,25 @@ def _is_all_day(x) -> bool:
     return isinstance(x, date) and not isinstance(x, datetime)
 
 
-def _person_key(person_entity_id: str) -> str:
-    """مفتاح تقويم فرد ثابت من object_id بتاع كيان person (person.mena → person_mena)."""
-    return f"person_{person_entity_id.split('.', 1)[1]}"
-
-
-def _person_name(hass: HomeAssistant, person_entity_id: str) -> str:
-    st = hass.states.get(person_entity_id)
-    name = st.attributes.get("friendly_name") if st else None
-    return str(name or person_entity_id.split(".", 1)[1])
+def _migrate_store(data: dict[str, list[dict]]) -> bool:
+    """ينقل بيانات التقاويم القديمة للجديد ويشيل تقاويم الأفراد. Idempotent —
+    بعد أول مرة التقاويم القديمة بتختفي فمفيش تكرار. بيرجّع True لو اتغيّر حاجة."""
+    changed = False
+    for old, (new, yearly) in _MIGRATE.items():
+        if old not in data:
+            continue
+        moved = data.pop(old)
+        if yearly:
+            for e in moved:
+                if not e.get("rrule"):
+                    e["rrule"] = _YEARLY
+        data.setdefault(new, []).extend(moved)
+        changed = True
+    # تقاويم الأفراد اللي المكوّن كان بيعملها قبل كده — بتتشال.
+    for key in [k for k in data if k.startswith("person_")]:
+        del data[key]
+        changed = True
+    return changed
 
 
 async def async_setup_entry(
@@ -102,11 +125,8 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """يعمل تقاويم العيلة الثابتة (أعياد ميلاد/مناسبات/مواعيد) + **تقويم لكل فرد**
-    (person) تلقائيًا — لأول config entry بس (مفيش تكرار). التقاويم الشخصية
-    بتتعمل للموجودين دلوقتي، وأي فرد يتضاف بعدين بياخد تقويمه تلقائيًا من غير
-    إعادة تحميل. المفاتيح ثابتة (unique_id) فمفيش تكرار عبر إعادة التشغيل.
-    """
+    """يعمل تقاويم العيلة المشتركة الثابتة لأول config entry بس (مفيش تكرار)،
+    بيعمل الميجريشن، وبيسجّل تنظيف دوري للمفكرة."""
     owner = hass.data.setdefault(DOMAIN, {}).get(_FLAG)
     if owner is not None and owner != entry.entry_id:
         return  # تقويم اتعمل من entry تاني — مانعملوش تاني
@@ -114,59 +134,149 @@ async def async_setup_entry(
 
     store = _CalStore(hass)
     await store.load()
+    if _migrate_store(store.data):
+        await store.save()
 
-    created: set[str] = set()
+    entities = {key: SecureFamilyCalendar(store, key, name, kind) for key, name, kind in CALENDARS}
+    async_add_entities(entities.values())
 
-    @callback
-    def _add(specs: list[tuple[str, str, str | None]]) -> None:
-        """يضيف تقاويم جديدة بس (مش متكررة). spec = (key, name, person_entity_id?)."""
-        fresh = [s for s in specs if s[0] not in created]
-        for key, _name, _pid in fresh:
-            created.add(key)
-        if fresh:
-            async_add_entities(
-                SecureFamilyCalendar(store, key, name, pid) for key, name, pid in fresh
-            )
-
-    # الثابتة + تقويم لكل فرد موجود حاليًا.
-    specs: list[tuple[str, str, str | None]] = [(k, n, None) for k, n in CALENDARS]
-    for pid in hass.states.async_entity_ids("person"):
-        specs.append((_person_key(pid), f"{_person_name(hass, pid)} (Secure Family)", pid))
-    _add(specs)
-
-    # أي فرد (person) يتضاف بعد كده → تقويمه يتعمل تلقائيًا (بيغطي كمان لو كيانات
-    # person اتحمّلت بعد المكوّن، فمفيش مشكلة ترتيب تحميل).
-    @callback
-    def _person_added(event) -> None:
-        eid = event.data.get("entity_id")
-        new_state = event.data.get("new_state")
-        if not eid or new_state is None:
+    # تنظيف المفكرة: مسح الأحداث اللي عدّت (مش متكررة) — عند الإقلاع وكل ٦ ساعات.
+    async def _sweep_planner(_now=None) -> None:
+        planner = entities.get("planner")
+        if planner is None:
             return
-        _add([(_person_key(eid), f"{new_state.attributes.get('friendly_name') or eid.split('.', 1)[1]} (Secure Family)", eid)])
+        now = dt_util.now()
+        tz = dt_util.DEFAULT_TIME_ZONE
+        kept: list[dict] = []
+        for e in store.events("planner"):
+            if e.get("rrule"):
+                kept.append(e)  # متكرر (نادر في المفكرة) — ما يتمسحش
+                continue
+            try:
+                end = _load_dt(e["end"], bool(e.get("all_day")))
+            except (KeyError, ValueError):
+                kept.append(e)
+                continue
+            if to_datetime(end, tz) > now:
+                kept.append(e)
+        if len(kept) != len(store.events("planner")):
+            store.set_events("planner", kept)
+            await store.save()
+            planner.async_write_ha_state()
 
-    entry.async_on_unload(async_track_state_added_domain(hass, ["person"], _person_added))
+    await _sweep_planner()
+    entry.async_on_unload(async_track_time_interval(hass, _sweep_planner, _PLANNER_SWEEP))
+
+    # توليد أعياد الميلاد تلقائيًا من بروفايلات العيلة (config.profiles) في
+    # تقويم المناسبات السنوية — عند الإقلاع وعند أي تغيير في الكونفيج.
+    config_store = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+
+    async def _resync_birthdays() -> None:
+        config = config_store.config if config_store is not None else {}
+        if _sync_birthdays(hass, store, config):
+            await store.save()
+            annual = entities.get("annual")
+            if annual is not None:
+                annual.async_write_ha_state()
+
+    await _resync_birthdays()
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, SIGNAL_UPDATE, lambda: hass.async_create_task(_resync_birthdays()))
+    )
+
+
+def _sync_birthdays(hass: HomeAssistant, store: _CalStore, config: dict) -> bool:
+    """يعيد توليد أحداث الميلاد التلقائية في تقويم المناسبات السنوية من
+    `config.profiles[person_id].birthday`. الأحداث اليدوية (uid مختلف) بتتساب.
+    كل مرة بنمسح المتولّد ونعيد بناءه → idempotent، ويحدّث لو التاريخ اتغيّر.
+    بيرجّع True لو الناتج اختلف عن المخزّن (عشان نحفظ بس عند التغيير)."""
+    profiles = (config or {}).get("profiles") or {}
+    before = store.events("annual")
+    manual = [e for e in before if not str(e.get("uid", "")).startswith(_BDAY_UID)]
+    auto: list[dict] = []
+    for pid, prof in profiles.items():
+        if not isinstance(prof, dict):
+            continue
+        raw = prof.get("birthday")
+        if not raw:
+            continue
+        try:
+            d = date.fromisoformat(str(raw))
+        except ValueError:
+            continue
+        name = _person_name(hass, pid)
+        auto.append({
+            "uid": f"{_BDAY_UID}{pid}",
+            "summary": f"🎂 {name}",
+            "start": d.isoformat(),
+            "end": (d + timedelta(days=1)).isoformat(),
+            "all_day": True,
+            "rrule": _YEARLY,
+            # «خاص بـ» صاحب الميلاد — التطبيق بيعرض صورته جمب الحدث.
+            "description": f"·for:{name}",
+            "location": None,
+        })
+    result = manual + auto
+    if result == before:
+        return False
+    store.set_events("annual", result)
+    return True
+
+
+def _holiday_events(hass: HomeAssistant, start_date: datetime, end_date: datetime) -> list[CalendarEvent]:
+    """أعياد رسمية للبلد (من دولة HA) كأحداث يوم-كامل — بتتحسب، مش متخزّنة."""
+    country = hass.config.country
+    if not country:
+        return []
+    try:
+        import holidays as holidays_lib  # مضمّنة في HA (workday/holiday)
+
+        years = list(range(start_date.year, end_date.year + 1))
+        hol = holidays_lib.country_holidays(country.upper(), years=years)
+    except Exception:  # noqa: BLE001 — دولة غير مدعومة أو المكتبة غير موجودة
+        return []
+    lo, hi = start_date.date(), end_date.date()
+    out: list[CalendarEvent] = []
+    for d, name in hol.items():
+        if not isinstance(d, date) or d < lo or d > hi:
+            continue
+        out.append(
+            CalendarEvent(
+                start=d,
+                end=d + timedelta(days=1),
+                summary=str(name),
+                uid=f"holiday_{country}_{d.isoformat()}",
+            )
+        )
+    out.sort(key=lambda c: c.start)
+    return out
 
 
 class SecureFamilyCalendar(CalendarEntity):
-    """تقويم محلي مخزّن، بيدعم الإضافة/التعديل/الحذف والتكرار."""
+    """تقويم عائلي مشترك. النوع بيحدّد السلوك:
+    annual = كل حدث يتكرر سنويًا (All-day)؛ planner/meals = عادي مخزّن؛
+    holidays = عرض فقط ومحسوب من مكتبة holidays."""
 
     _attr_has_entity_name = False
     _attr_should_poll = False
-    _attr_supported_features = (
-        CalendarEntityFeature.CREATE_EVENT
-        | CalendarEntityFeature.DELETE_EVENT
-        | CalendarEntityFeature.UPDATE_EVENT
-    )
 
-    def __init__(self, store: _CalStore, key: str, name: str, person_entity_id: str | None = None) -> None:
+    def __init__(self, store: _CalStore, key: str, name: str, kind: str) -> None:
         self._store = store
         self._key = key
+        self._kind = kind
         self._attr_name = name
         self._attr_unique_id = f"{DOMAIN}_{key}"
-        # لتقويم فرد: بنعرض كيان الـperson كـattribute عشان التطبيق يربط كل تقويم
-        # بصاحبه (عمود لكل فرد) من غير ما يعتمد على اسم/entity_id متغيّر.
-        if person_entity_id:
-            self._attr_extra_state_attributes = {"person_entity_id": person_entity_id}
+        self._attr_extra_state_attributes = {"secure_family_kind": kind}
+        # الأعياد عرض-فقط؛ الباقي قابل للإضافة/التعديل/الحذف.
+        self._attr_supported_features = (
+            CalendarEntityFeature(0)
+            if kind == "holidays"
+            else (
+                CalendarEntityFeature.CREATE_EVENT
+                | CalendarEntityFeature.DELETE_EVENT
+                | CalendarEntityFeature.UPDATE_EVENT
+            )
+        )
 
     # ===== قراية =====
     @property
@@ -174,6 +284,12 @@ class SecureFamilyCalendar(CalendarEntity):
         """أقرب حدث جاي أو شغّال دلوقتي."""
         tz = dt_util.DEFAULT_TIME_ZONE
         now = dt_util.now()
+        if self._kind == "holidays":
+            evs = _holiday_events(self.hass, now - timedelta(days=1), now + timedelta(days=400))
+            for ev in evs:
+                if to_datetime(ev.end, tz) > now:
+                    return ev
+            return None
         best: tuple[datetime, CalendarEvent] | None = None
         for ev in self._store.events(self._key):
             all_day = bool(ev.get("all_day"))
@@ -195,6 +311,8 @@ class SecureFamilyCalendar(CalendarEntity):
     async def async_get_events(
         self, hass: HomeAssistant, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
+        if self._kind == "holidays":
+            return _holiday_events(hass, start_date, end_date)
         tz = dt_util.DEFAULT_TIME_ZONE
         out: list[CalendarEvent] = []
         for ev in self._store.events(self._key):
@@ -225,13 +343,22 @@ class SecureFamilyCalendar(CalendarEntity):
     async def async_create_event(self, **kwargs) -> None:
         start = kwargs["dtstart"]
         end = kwargs["dtend"]
+        rrule = kwargs.get("rrule")
+        # المناسبات السنوية: كل حدث يوم-كامل ويتكرر سنويًا تلقائيًا.
+        if self._kind == "annual":
+            if isinstance(start, datetime):
+                start = start.date()
+            if isinstance(end, datetime):
+                end = end.date()
+            if not rrule:
+                rrule = _YEARLY
         ev = {
             "uid": kwargs.get("uid") or uuid.uuid4().hex,
             "summary": kwargs.get("summary", ""),
             "start": start.isoformat(),
             "end": end.isoformat(),
             "all_day": _is_all_day(start),
-            "rrule": kwargs.get("rrule"),
+            "rrule": rrule,
             "description": kwargs.get("description"),
             "location": kwargs.get("location"),
         }
@@ -258,10 +385,16 @@ class SecureFamilyCalendar(CalendarEntity):
             if e.get("uid") != uid:
                 continue
             if "dtstart" in event:
-                e["start"] = event["dtstart"].isoformat()
-                e["all_day"] = _is_all_day(event["dtstart"])
+                st = event["dtstart"]
+                if self._kind == "annual" and isinstance(st, datetime):
+                    st = st.date()
+                e["start"] = st.isoformat()
+                e["all_day"] = _is_all_day(st)
             if "dtend" in event:
-                e["end"] = event["dtend"].isoformat()
+                en = event["dtend"]
+                if self._kind == "annual" and isinstance(en, datetime):
+                    en = en.date()
+                e["end"] = en.isoformat()
             if "summary" in event:
                 e["summary"] = event["summary"]
             if "rrule" in event:
