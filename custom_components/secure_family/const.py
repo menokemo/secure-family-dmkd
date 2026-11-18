@@ -18,6 +18,13 @@ SERVICE_CLEANUP_TRACKERS = "cleanup_stale_trackers"
 # طلب موقع لايف لفرد (متاح لأي فرد، مش أدمن بس).
 SERVICE_REQUEST_LIVE = "request_live_location"
 
+# شبكة العيلة (الحائط/الشات/المهام) — متاحة لأي فرد مسجّل، مش أدمن بس.
+SERVICE_WALL_POST = "wall_post"
+SERVICE_CHAT_SEND = "chat_send"
+SERVICE_CHORE_ADD = "chore_add"
+SERVICE_CHORE_SET = "chore_set"
+SERVICE_SOCIAL_DELETE = "social_delete"
+
 # app_id اللي تطبيقنا بيسجّل بيه في تكامل mobile_app.
 APP_ID = "secure_family"
 APP_NAME = "Secure Family"
@@ -37,6 +44,7 @@ EVENT_LIVE_REQUEST = "familyha_live_request"
 
 # إشارة داخلية لتحديث الكيانات.
 SIGNAL_UPDATE = f"{DOMAIN}_update"
+SIGNAL_SOCIAL = f"{DOMAIN}_social"
 
 # ===== إدارة أجهزة التطبيق: جهاز نشط واحد لكل مستخدم + موافقة الأدمن =====
 # تخزين الأجهزة النشطة والطلبات المعلّقة (منفصل عن مخزن الإعداد).

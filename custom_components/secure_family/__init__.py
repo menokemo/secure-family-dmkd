@@ -31,7 +31,10 @@ from .const import (
     EVENT_LIVE_REQUEST,
     EVENT_UPDATED,
     SERVICE_APPROVE_REGISTRATION,
+    SERVICE_CHAT_SEND,
     SERVICE_CHECK_DEVICE,
+    SERVICE_CHORE_ADD,
+    SERVICE_CHORE_SET,
     SERVICE_CLEANUP_TRACKERS,
     SERVICE_CLEAR,
     SERVICE_DENY_REGISTRATION,
@@ -40,11 +43,15 @@ from .const import (
     SERVICE_REQUEST_REGISTRATION,
     SERVICE_ROLLBACK,
     SERVICE_SET_CONFIG,
+    SERVICE_SOCIAL_DELETE,
+    SERVICE_WALL_POST,
+    SIGNAL_SOCIAL,
     SIGNAL_UPDATE,
 )
 from .device_store import DeviceStore
 from .devices import DeviceManager
 from .panel import async_remove_panel, async_setup_panel
+from .social_store import SocialStore
 from .store import ConfigStore
 
 PLATFORMS = ["sensor", "binary_sensor", "calendar"]
@@ -61,6 +68,13 @@ CLEANUP_SCHEMA = vol.Schema(
     }
 )
 REQUEST_LIVE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.string})
+WALL_POST_SCHEMA = vol.Schema({vol.Required("text"): cv.string})
+CHAT_SEND_SCHEMA = vol.Schema({vol.Required("text"): cv.string})
+CHORE_ADD_SCHEMA = vol.Schema({vol.Required("title"): cv.string, vol.Optional("assignee"): cv.string})
+CHORE_SET_SCHEMA = vol.Schema({vol.Required("chore_id"): cv.string, vol.Required("done"): cv.boolean})
+SOCIAL_DELETE_SCHEMA = vol.Schema(
+    {vol.Required("section"): vol.In(["wall", "chat", "chores"]), vol.Required("item_id"): cv.string}
+)
 CHECK_DEVICE_SCHEMA = vol.Schema(
     {vol.Required("device_id"): cv.string, vol.Optional("name", default=""): cv.string}
 )
@@ -202,6 +216,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await device_store.async_load()
         hass.data[DOMAIN]["_devices"] = DeviceManager(hass, device_store)
 
+    # شبكة العيلة (حائط/شات/مهام) — مخزن واحد مشترك.
+    if "_social" not in hass.data[DOMAIN]:
+        social = SocialStore(hass)
+        await social.async_load()
+        hass.data[DOMAIN]["_social"] = social
+        # مرجع لكونفيج العيلة (فيه البروفايلات/الأدوار) عشان السيرفسات تتحقق من الدور.
+        hass.data[DOMAIN]["_config"] = store
+
     async def _user_name(call: ServiceCall) -> str | None:
         """يتأكد إن المنفّذ أدمن ويرجّع اسمه. بيرفض غير الأدمن."""
         user_id = call.context.user_id
@@ -317,7 +339,89 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         devices: DeviceManager = hass.data[DOMAIN]["_devices"]
         return {"pending": devices.list_pending()}
 
+    # ===== شبكة العيلة (الحائط/الشات/المهام) — متاحة لأي فرد مسجّل =====
+    def _social() -> SocialStore:
+        return hass.data[DOMAIN]["_social"]
+
+    def _notify_social() -> None:
+        async_dispatcher_send(hass, SIGNAL_SOCIAL)
+
+    async def _author(call: ServiceCall) -> tuple[str | None, str]:
+        """يرجّع (person_entity_id أو None، اسم العرض) للفرد اللي نادى السيرفس —
+        من هويته في HA، فمايقدرش ينتحل حد تاني."""
+        user_id = call.context.user_id
+        name = "Family"
+        if user_id is not None:
+            user = await hass.auth.async_get_user(user_id)
+            if user and user.name:
+                name = user.name
+            for state in hass.states.async_all("person"):
+                if state.attributes.get("user_id") == user_id:
+                    return state.entity_id, str(state.attributes.get("friendly_name") or name)
+        return None, name
+
+    async def handle_wall_post(call: ServiceCall) -> None:
+        text = str(call.data["text"]).strip()
+        if not text:
+            return
+        person, name = await _author(call)
+        await _social().add_post(person, name, text)
+        _notify_social()
+
+    async def handle_chat_send(call: ServiceCall) -> None:
+        text = str(call.data["text"]).strip()
+        if not text:
+            return
+        person, name = await _author(call)
+        await _social().add_message(person, name, text)
+        _notify_social()
+
+    async def handle_chore_add(call: ServiceCall) -> None:
+        title = str(call.data["title"]).strip()
+        if not title:
+            return
+        assignee = call.data.get("assignee")
+        if assignee:
+            st = hass.states.get(assignee)
+            aname = str((st.attributes.get("friendly_name") if st else None) or assignee)
+        else:
+            assignee, aname = await _author(call)
+        await _social().add_chore(assignee, aname, title)
+        _notify_social()
+
+    async def handle_chore_set(call: ServiceCall) -> None:
+        if await _social().set_chore(call.data["chore_id"], bool(call.data["done"])):
+            _notify_social()
+
+    def _role(person_id: str | None) -> str | None:
+        cfg = hass.data.get(DOMAIN, {}).get("_config")
+        profiles = ((cfg.config.get("profiles") if cfg else None) or {}) if cfg else {}
+        prof = profiles.get(person_id) if person_id else None
+        return (prof or {}).get("role")
+
+    async def handle_social_delete(call: ServiceCall) -> None:
+        person, _ = await _author(call)
+        if _role(person) == "child":
+            return  # الطفل مايحذفش من الحائط/الشات/المهام
+        if await _social().delete(call.data["section"], call.data["item_id"]):
+            _notify_social()
+
     if not hass.services.has_service(DOMAIN, SERVICE_SET_CONFIG):
+        hass.services.async_register(
+            DOMAIN, SERVICE_WALL_POST, handle_wall_post, schema=WALL_POST_SCHEMA
+        )
+        hass.services.async_register(
+            DOMAIN, SERVICE_CHAT_SEND, handle_chat_send, schema=CHAT_SEND_SCHEMA
+        )
+        hass.services.async_register(
+            DOMAIN, SERVICE_CHORE_ADD, handle_chore_add, schema=CHORE_ADD_SCHEMA
+        )
+        hass.services.async_register(
+            DOMAIN, SERVICE_CHORE_SET, handle_chore_set, schema=CHORE_SET_SCHEMA
+        )
+        hass.services.async_register(
+            DOMAIN, SERVICE_SOCIAL_DELETE, handle_social_delete, schema=SOCIAL_DELETE_SCHEMA
+        )
         hass.services.async_register(
             DOMAIN, SERVICE_SET_CONFIG, handle_set, schema=SET_CONFIG_SCHEMA
         )
@@ -415,6 +519,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_remove_panel(hass)
             hass.data[DOMAIN].pop("_auto_cleanup", None)
             hass.data[DOMAIN].pop("_devices", None)
+            hass.data[DOMAIN].pop("_social", None)
+            hass.data[DOMAIN].pop("_social_sensors", None)
             hass.data[DOMAIN].pop("_calendars_entry", None)
             for service in (
                 SERVICE_SET_CONFIG,
@@ -422,6 +528,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_CLEAR,
                 SERVICE_CLEANUP_TRACKERS,
                 SERVICE_REQUEST_LIVE,
+                SERVICE_WALL_POST,
+                SERVICE_CHAT_SEND,
+                SERVICE_CHORE_ADD,
+                SERVICE_CHORE_SET,
+                SERVICE_SOCIAL_DELETE,
                 SERVICE_CHECK_DEVICE,
                 SERVICE_REQUEST_REGISTRATION,
                 SERVICE_APPROVE_REGISTRATION,

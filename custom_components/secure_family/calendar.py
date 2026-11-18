@@ -30,6 +30,7 @@ from homeassistant.components.calendar import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -99,6 +100,20 @@ def _is_all_day(x) -> bool:
     return isinstance(x, date) and not isinstance(x, datetime)
 
 
+def _remove_stale_calendars(hass: HomeAssistant) -> None:
+    """يشيل كيانات التقاويم القديمة بتاعة المكوّن من سجل الكيانات: التقاويم
+    المشتركة القديمة (birthdays/events/appointments) وكل تقاويم الأفراد
+    (person_*). الجديدة (annual/planner/holidays/meals) مابتتمسّش."""
+    registry = er.async_get(hass)
+    stale = {f"{DOMAIN}_birthdays", f"{DOMAIN}_events", f"{DOMAIN}_appointments"}
+    for entity in list(registry.entities.values()):
+        if entity.platform != DOMAIN or entity.domain != "calendar":
+            continue
+        uid = entity.unique_id or ""
+        if uid in stale or uid.startswith(f"{DOMAIN}_person_"):
+            registry.async_remove(entity.entity_id)
+
+
 def _migrate_store(data: dict[str, list[dict]]) -> bool:
     """ينقل بيانات التقاويم القديمة للجديد ويشيل تقاويم الأفراد. Idempotent —
     بعد أول مرة التقاويم القديمة بتختفي فمفيش تكرار. بيرجّع True لو اتغيّر حاجة."""
@@ -131,6 +146,10 @@ async def async_setup_entry(
     if owner is not None and owner != entry.entry_id:
         return  # تقويم اتعمل من entry تاني — مانعملوش تاني
     hass.data[DOMAIN][_FLAG] = entry.entry_id
+
+    # نشيل كيانات التقاويم القديمة من سجل الكيانات (HA مابيشيلهاش لوحده لما
+    # نبطّل ننشئها — بتفضل ظاهرة كـ«غير متاحة»).
+    _remove_stale_calendars(hass)
 
     store = _CalStore(hass)
     await store.load()

@@ -23,11 +23,13 @@ SCAN_INTERVAL = timedelta(seconds=60)
 
 # فوق الحد ده في الـ attribute بيحذّر HA ويقص؛ ننبّه قبل ما يحصل.
 _CONFIG_ATTR_WARN_BYTES = 14000
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import APP_ID, APP_NAME, DOMAIN
+from .const import APP_ID, APP_NAME, DOMAIN, SIGNAL_SOCIAL
 from .entity import SecureFamilyEntity
+from .social_store import SocialStore
 from .store import ConfigStore
 
 
@@ -35,14 +37,22 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     store: ConfigStore = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [
-            SecureFamilyConfigSensor(entry, store),
-            SecureFamilyVersionSensor(entry, store),
-            SecureFamilyLastUpdateSensor(entry, store),
-            SecureFamilyDevicesSensor(entry, store),
+    entities = [
+        SecureFamilyConfigSensor(entry, store),
+        SecureFamilyVersionSensor(entry, store),
+        SecureFamilyLastUpdateSensor(entry, store),
+        SecureFamilyDevicesSensor(entry, store),
+    ]
+    # كيانات شبكة العيلة — بتتعمل مرة واحدة (مع أول entry اللي عمل المخزن).
+    social: SocialStore | None = hass.data.get(DOMAIN, {}).get("_social")
+    if social is not None and not hass.data[DOMAIN].get("_social_sensors"):
+        hass.data[DOMAIN]["_social_sensors"] = True
+        entities += [
+            SecureFamilySocialSensor(entry, social, "wall", "wall", "mdi:bulletin-board"),
+            SecureFamilySocialSensor(entry, social, "chat", "chat", "mdi:chat"),
+            SecureFamilySocialSensor(entry, social, "chores", "chores", "mdi:broom"),
         ]
-    )
+    async_add_entities(entities)
 
 
 class SecureFamilyConfigSensor(SecureFamilyEntity, SensorEntity):
@@ -200,3 +210,32 @@ class SecureFamilyDevicesSensor(SecureFamilyEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         return {"devices": self._devices}
+
+
+class SecureFamilySocialSensor(SecureFamilyEntity, SensorEntity):
+    """كيان قراية لقسم من شبكة العيلة (الحائط/الشات/المهام). الـstate = عدد
+    العناصر، والعناصر نفسها في attribute باسم القسم — التطبيق بيقراها (حتى
+    غير الأدمن عبر state_changed). مستبعدة من الـrecorder."""
+
+    def __init__(self, entry: ConfigEntry, social: SocialStore, section: str, key: str, icon: str) -> None:
+        super().__init__(entry, social)
+        self._social = social
+        self._section = section
+        self._attr_name = key.capitalize()
+        self._attr_icon = icon
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._unrecorded_attributes = frozenset({section})
+
+    @property
+    def native_value(self) -> int:
+        return len(self._social.data.get(self._section, []))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {self._section: self._social.data.get(self._section, [])}
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_SOCIAL, self.async_write_ha_state)
+        )

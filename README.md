@@ -59,18 +59,41 @@ names.
 
 On upgrade from an older version, the previous `birthdays` / `events` /
 `appointments` calendars are **migrated** into the new ones (birthdays & events →
-Annual, appointments → Planner), and the old **per-person** calendars the
-integration used to create are **removed** automatically.
+Annual, appointments → Planner). The old shared calendars and the old
+**per-person** calendars the integration used to create are **removed from the
+entity registry** automatically (Home Assistant keeps previously-registered
+entities until the integration removes them, so they are cleaned up on setup).
 
 ### Family profiles
 
 The panel has a **Family profiles** section (under Calendar & to-do) where an
-admin sets, per family member (`person`): a **birthday**, an optional **role**
-(Dad / Mom / Son…), and an optional **colour**. Birthdays entered here are turned
+admin sets, per family member (`person`): a **birthday**, a **role**
+(manager / adult / child), and an optional **colour**. The role drives
+permissions: a member whose role is **child** cannot delete wall posts, chat
+messages, or chores — the component refuses `secure_family.social_delete` for
+them, and the app hides the delete actions. No role set means everyone can
+(the previous behaviour). Birthdays entered here are turned
 into yearly all-day events in the Annual calendar automatically (stable ids, so
 they're never duplicated and update when a date changes), tagged with the member
 so the app shows their photo next to the event. Profiles are stored in the family
 config and published with it.
+
+## Family network (wall · chat · chores)
+
+The integration also backs the app's family-organiser tab — a private family
+network stored locally on your Home Assistant (no external server):
+
+- A shared **wall** (text posts), a family **group chat** (text), and
+  **chores** (assignable to members). All text, stored in `.storage` with a
+  cap, so storage stays bounded.
+- **Any signed-in member** (not just admins) can write via services:
+  `secure_family.wall_post`, `chat_send`, `chore_add`, `chore_set`,
+  `social_delete`. The author is taken from the caller's own Home Assistant
+  account, so nobody can post as someone else.
+- The app reads it from three sensors — `sensor.secure_family_wall`,
+  `sensor.secure_family_chat`, `sensor.secure_family_chores` — whose attributes
+  carry the items. Non-admin members receive updates through `state_changed`,
+  so the wall and chat are effectively live for everyone.
 
 ## Installation
 

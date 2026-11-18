@@ -165,3 +165,82 @@ list_pending_registrations:
   description: >-
     Return pending device-approval requests with their codes. Administrators
     only — this is how an admin's app gets the code securely.
+
+wall_post:
+  name: Post to the family wall
+  description: Add a text post to the shared family wall. Any signed-in family member.
+  fields:
+    text:
+      name: Text
+      description: The post text.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+chat_send:
+  name: Send a family chat message
+  description: Send a text message to the family group chat. Any signed-in family member.
+  fields:
+    text:
+      name: Text
+      description: The message text.
+      required: true
+      selector:
+        text:
+
+chore_add:
+  name: Add a chore
+  description: Add a chore, optionally assigned to a family member. Any signed-in family member.
+  fields:
+    title:
+      name: Title
+      description: What needs doing.
+      required: true
+      selector:
+        text:
+    assignee:
+      name: Assignee
+      description: The person entity to assign it to (defaults to the caller).
+      required: false
+      selector:
+        entity:
+          domain: person
+
+chore_set:
+  name: Mark a chore done/undone
+  description: Set a chore's done state. Any signed-in family member.
+  fields:
+    chore_id:
+      name: Chore id
+      description: The id of the chore.
+      required: true
+      selector:
+        text:
+    done:
+      name: Done
+      description: Whether the chore is done.
+      required: true
+      selector:
+        boolean:
+
+social_delete:
+  name: Delete a wall/chat/chore item
+  description: Remove an item from the family wall, chat, or chores.
+  fields:
+    section:
+      name: Section
+      description: wall, chat, or chores.
+      required: true
+      selector:
+        select:
+          options:
+            - wall
+            - chat
+            - chores
+    item_id:
+      name: Item id
+      description: The id of the item to delete.
+      required: true
+      selector:
+        text:

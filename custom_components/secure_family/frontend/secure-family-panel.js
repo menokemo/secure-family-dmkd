@@ -58,7 +58,7 @@ const T = {
     settings: "Family settings", settingsSub: "The admin settings published to the family. Members don't see these.",
     save: "Save & publish", saved: "Published to the family", saveErr: "Could not save",
     none: "— none —", ready: "Ready", missing: "Missing", add: "Add", installed: "Installed",
-    birthday: "Birthday", role: "Role", rolePlaceholder: "Dad, Mom, Son…", color: "Color",
+    birthday: "Birthday", role: "Role", roleNone: "— none —", roleManager: "Manager", roleAdult: "Adult", roleChild: "Child", color: "Color",
     profilesNoPersons: "No people found. Add person entities in Home Assistant first.",
     profilesHint: "Birthdays here are added to the Annual calendar automatically and repeat every year.",
     scopeGlobal: "Global", scopeCountry: "Your country", loading: "Loading…",
@@ -90,7 +90,7 @@ const T = {
     settings: "Gezinsinstellingen", settingsSub: "De beheerdersinstellingen die naar het gezin worden gepubliceerd. Leden zien deze niet.",
     save: "Opslaan & publiceren", saved: "Gepubliceerd naar het gezin", saveErr: "Opslaan mislukt",
     none: "— geen —", ready: "Gereed", missing: "Ontbreekt", add: "Toevoegen", installed: "Geïnstalleerd",
-    birthday: "Verjaardag", role: "Rol", rolePlaceholder: "Vader, Moeder, Zoon…", color: "Kleur",
+    birthday: "Verjaardag", role: "Rol", roleNone: "— geen —", roleManager: "Beheerder", roleAdult: "Volwassene", roleChild: "Kind", color: "Kleur",
     profilesNoPersons: "Geen personen gevonden. Voeg eerst person-entiteiten toe in Home Assistant.",
     profilesHint: "Verjaardagen hier komen automatisch in de Jaarlijkse agenda en herhalen elk jaar.",
     scopeGlobal: "Wereldwijd", scopeCountry: "Jouw land", loading: "Laden…",
@@ -122,7 +122,7 @@ const T = {
     settings: "إعدادات العيلة", settingsSub: "إعدادات الأدمن اللي بتتنشر للعيلة. الأفراد مابيشوفوهاش.",
     save: "حفظ ونشر", saved: "اتنشر للعيلة", saveErr: "ماقدرش يحفظ",
     none: "— مفيش —", ready: "جاهز", missing: "ناقص", add: "أضف", installed: "متركّب",
-    birthday: "تاريخ الميلاد", role: "الصفة", rolePlaceholder: "أب، أم، ابن…", color: "اللون",
+    birthday: "تاريخ الميلاد", role: "الدور", roleNone: "— بدون —", roleManager: "مدير", roleAdult: "بالغ", roleChild: "طفل", color: "اللون",
     profilesNoPersons: "مفيش أفراد. ضيف كيانات person في Home Assistant الأول.",
     profilesHint: "أعياد الميلاد هنا بتتضاف تلقائيًا لتقويم المناسبات السنوية وبتتكرر كل سنة.",
     scopeGlobal: "عالمي", scopeCountry: "دولتك", loading: "جار التحميل…",
@@ -332,7 +332,12 @@ class SecureFamilyPanel extends HTMLElement {
               <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;opacity:.8;">${t.birthday}
                 <input type="date" data-pf="birthday" value="${pr.birthday ? esc(pr.birthday) : ""}"/></label>
               <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;opacity:.8;">${t.role}
-                <input type="text" data-pf="role" value="${pr.role ? esc(pr.role) : ""}" placeholder="${t.rolePlaceholder}"/></label>
+                <select data-pf="role">
+                  <option value="" ${!pr.role ? "selected" : ""}>${t.roleNone}</option>
+                  <option value="manager" ${pr.role === "manager" ? "selected" : ""}>${t.roleManager}</option>
+                  <option value="adult" ${pr.role === "adult" ? "selected" : ""}>${t.roleAdult}</option>
+                  <option value="child" ${pr.role === "child" ? "selected" : ""}>${t.roleChild}</option>
+                </select></label>
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;opacity:.8;">
                 <input type="checkbox" data-pf="colorOn" ${pr.color ? "checked" : ""}/> ${t.color}
                 <input type="color" data-pf="color" value="${pr.color ? esc(pr.color) : "#378ADD"}"/></label>
