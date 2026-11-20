@@ -35,6 +35,7 @@ const FIELDS = [
   { key: "hazardRadiusKm", group: "location", type: "number", label: { en: "Hazard radius (km)", nl: "Gevarenradius (km)", ar: "نطاق المخاطر (كم)" } },
   { key: "disasterRadiusKm", group: "location", type: "number", label: { en: "Disaster radius (km)", nl: "Rampstraal (km)", ar: "نطاق الكوارث (كم)" } },
   { key: "selectedDashboardPath", group: "dashboard", type: "text", label: { en: "Dashboard path", nl: "Dashboardpad", ar: "مسار اللوحة" } },
+  { key: "familyMemberIds", group: "family", type: "entities", domains: ["person"], label: { en: "Family members", nl: "Gezinsleden", ar: "أفراد العيلة" } },
   { key: "profiles", group: "family", type: "profiles", label: { en: "Family profiles", nl: "Gezinsprofielen", ar: "بروفايلات العيلة" } },
   { key: "selectedCalendarIds", group: "family", type: "entities", domains: ["calendar"], label: { en: "Calendars", nl: "Agenda's", ar: "التقاويم" } },
   { key: "selectedTodoIds", group: "family", type: "entities", domains: ["todo"], label: { en: "To-do lists", nl: "Takenlijsten", ar: "قوائم المهام" } },
