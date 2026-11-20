@@ -206,6 +206,36 @@ chore_add:
       selector:
         entity:
           domain: person
+    category:
+      name: Category
+      description: Room or kind of chore (e.g. kitchen, bathroom, maintenance).
+      required: false
+      selector:
+        text:
+    due:
+      name: Due date
+      description: Optional due date, YYYY-MM-DD.
+      required: false
+      selector:
+        text:
+    repeat:
+      name: Repeat
+      description: How often it recurs. On completion a recurring chore moves to its next due date.
+      required: false
+      default: none
+      selector:
+        select:
+          options:
+            - none
+            - daily
+            - weekly
+            - monthly
+    note:
+      name: Note
+      description: Optional extra detail.
+      required: false
+      selector:
+        text:
 
 chore_set:
   name: Mark a chore done/undone

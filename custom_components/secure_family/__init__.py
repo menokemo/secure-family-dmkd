@@ -70,7 +70,16 @@ CLEANUP_SCHEMA = vol.Schema(
 REQUEST_LIVE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.string})
 WALL_POST_SCHEMA = vol.Schema({vol.Required("text"): cv.string})
 CHAT_SEND_SCHEMA = vol.Schema({vol.Required("text"): cv.string})
-CHORE_ADD_SCHEMA = vol.Schema({vol.Required("title"): cv.string, vol.Optional("assignee"): cv.string})
+CHORE_ADD_SCHEMA = vol.Schema(
+    {
+        vol.Required("title"): cv.string,
+        vol.Optional("assignee"): cv.string,
+        vol.Optional("category"): cv.string,
+        vol.Optional("due"): cv.string,
+        vol.Optional("repeat"): vol.In(["none", "daily", "weekly", "monthly"]),
+        vol.Optional("note"): cv.string,
+    }
+)
 CHORE_SET_SCHEMA = vol.Schema({vol.Required("chore_id"): cv.string, vol.Required("done"): cv.boolean})
 SOCIAL_DELETE_SCHEMA = vol.Schema(
     {vol.Required("section"): vol.In(["wall", "chat", "chores"]), vol.Required("item_id"): cv.string}
@@ -386,7 +395,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             aname = str((st.attributes.get("friendly_name") if st else None) or assignee)
         else:
             assignee, aname = await _author(call)
-        await _social().add_chore(assignee, aname, title)
+        await _social().add_chore(
+            assignee,
+            aname,
+            title,
+            category=call.data.get("category"),
+            due=call.data.get("due"),
+            repeat=call.data.get("repeat", "none"),
+            note=call.data.get("note"),
+        )
         _notify_social()
 
     async def handle_chore_set(call: ServiceCall) -> None:

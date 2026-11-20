@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import date
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .chore_recurrence import REPEATS, next_due, parse_date
 from .const import DOMAIN
 
 SOCIAL_STORAGE_VERSION = 1
@@ -65,7 +67,18 @@ class SocialStore:
         return item
 
     # ===== المهام الموزّعة =====
-    async def add_chore(self, assignee: str | None, assignee_name: str, title: str) -> dict:
+    async def add_chore(
+        self,
+        assignee: str | None,
+        assignee_name: str,
+        title: str,
+        category: str | None = None,
+        due: str | None = None,
+        repeat: str = "none",
+        note: str | None = None,
+    ) -> dict:
+        if repeat not in REPEATS:
+            repeat = "none"
         item = {
             "id": _new_id(),
             "ts": _now(),
@@ -73,6 +86,10 @@ class SocialStore:
             "name": assignee_name,
             "title": title,
             "done": False,
+            "category": (category or "") or None,
+            "due": (due or "") or None,
+            "repeat": repeat,
+            "note": (note or "") or None,
         }
         self.data["chores"].append(item)
         self.data["chores"] = self.data["chores"][-CHORES_MAX:]
@@ -82,10 +99,23 @@ class SocialStore:
     async def set_chore(self, chore_id: str, done: bool) -> bool:
         changed = False
         for c in self.data["chores"]:
-            if c.get("id") == chore_id and c.get("done") != done:
+            if c.get("id") != chore_id:
+                continue
+            repeat = c.get("repeat") or "none"
+            # مهمة متكرّرة اتعملت → تتنقل لميعادها الجاي وترجع غير متعمولة،
+            # بدل ما تتسجّل خلصانة (القرار المتّفق عليه: عنصر واحد حيّ لكل مهمة).
+            if done and repeat != "none":
+                base = parse_date(c.get("due")) or date.today()
+                nxt = next_due(base, repeat)
+                if nxt is not None:
+                    c["due"] = nxt.isoformat()
+                    c["done"] = False
+                    changed = True
+                break
+            if c.get("done") != done:
                 c["done"] = done
                 changed = True
-                break
+            break
         if changed:
             await self._save()
         return changed

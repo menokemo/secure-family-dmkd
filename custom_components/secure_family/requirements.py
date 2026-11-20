@@ -39,6 +39,8 @@ DEFAULT_SOURCES = ["gdacs", "usgs_earthquakes_feed"]
 #   · add_url (بديل: لينك توثيق لو مفيش تكامل أساسي يتضاف من اللوحة).
 # العالمية بتظهر لكل الدول؛ الخاصة بالدولة بتظهر لدولتها بس.
 GLOBAL_ADDONS = [
+    # منظّم الوجبات — بيغذّي تبويب العيلة (خطة الأكل + قوائم التسوّق) في التطبيق.
+    {"key": "mealie", "domain": "mealie", "add_url": "https://www.home-assistant.io/integrations/mealie/"},
     {"key": "gdacs", "domain": "gdacs"},
     {"key": "usgs_quakes", "domain": "usgs_earthquakes_feed"},
 ]

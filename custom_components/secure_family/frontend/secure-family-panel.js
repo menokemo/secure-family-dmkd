@@ -74,6 +74,7 @@ const T = {
       hazards: ["Hazard sources", "Add a geo_location source so road, weather and disaster alerts appear."],
     },
     addonsCat: {
+      mealie: ["Mealie — meal planning & recipes", "Powers the Family meal plan and shopping lists in the app."],
       gdacs: ["GDACS — natural disasters", "Floods, earthquakes, storms, wildfires worldwide."],
       usgs_quakes: ["USGS — earthquakes", "Worldwide seismic events feed."],
       p2000: ["P2000 — NL emergency", "Dutch ambulance, fire and police dispatches."],
@@ -106,6 +107,7 @@ const T = {
       hazards: ["Gevarenbronnen", "Voeg een geo_location-bron toe voor verkeer, weer en rampen."],
     },
     addonsCat: {
+      mealie: ["Mealie — maaltijdplanning & recepten", "Voedt de maaltijdplanning en boodschappenlijsten in de app."],
       gdacs: ["GDACS — natuurrampen", "Overstromingen, aardbevingen, stormen, natuurbranden wereldwijd."],
       usgs_quakes: ["USGS — aardbevingen", "Wereldwijde seismische feed."],
       p2000: ["P2000 — NL hulpdiensten", "Nederlandse ambulance-, brandweer- en politiemeldingen."],
@@ -138,6 +140,7 @@ const T = {
       hazards: ["مصادر المخاطر", "أضف مصدر geo_location عشان تظهر بلاغات الطرق والطقس والكوارث."],
     },
     addonsCat: {
+      mealie: ["Mealie — تخطيط وجبات ووصفات", "بيغذّي خطة الأكل وقوائم التسوّق في تبويب العيلة."],
       gdacs: ["GDACS — الكوارث الطبيعية", "فيضانات وزلازل وعواصف وحرائق حول العالم."],
       usgs_quakes: ["USGS — الزلازل", "تغذية زلازل عالمية."],
       p2000: ["P2000 — طوارئ هولندا", "بلاغات الإسعاف والإطفاء والشرطة الهولندية."],
